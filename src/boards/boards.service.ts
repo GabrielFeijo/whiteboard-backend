@@ -26,6 +26,47 @@ export class BoardsService {
     return crypto.createHash('sha256').update(token).digest('hex');
   }
 
+  private async validateShareLink(boardId: string, token: string) {
+    const tokenHash = this.hashToken(token);
+    const link = await this.prisma.shareLink.findUnique({
+      where: { tokenHash },
+    });
+
+    if (!link || link.boardId !== boardId || link.revokedAt !== null) {
+      throw new ForbiddenException('Invalid or revoked share link');
+    }
+
+    if (link.expiresAt && link.expiresAt < new Date()) {
+      throw new ForbiddenException('Share link has expired');
+    }
+
+    return link;
+  }
+
+  private resolveDirectMemberRole(
+    board: { ownerId: string; members: Array<{ userId?: string; role: Role }> },
+    userId: string,
+  ): Role | undefined {
+    if (board.ownerId === userId) return 'OWNER';
+    return board.members.find((m) => m.userId === userId || !m.userId)?.role;
+  }
+
+  private async enrollUserFromShareLink(boardId: string, userId: string, role: Role) {
+    await this.prisma.boardMember.upsert({
+      where: {
+        boardId_userId: { boardId, userId },
+      },
+      create: {
+        boardId,
+        userId,
+        role,
+      },
+      update: {
+        role,
+      },
+    });
+  }
+
   async create(userId: string, dto: CreateBoardDto) {
     return this.prisma.$transaction(async (tx) => {
       const board = await tx.board.create({
@@ -59,6 +100,7 @@ export class BoardsService {
       },
       take: take + 1,
       cursor: cursor ? { id: cursor } : undefined,
+      skip: cursor ? 1 : 0,
       orderBy: { updatedAt: 'desc' },
       include: {
         members: {
@@ -108,58 +150,23 @@ export class BoardsService {
       throw new NotFoundException('Board not found');
     }
 
-    let userRole: Role | undefined;
-
-    if (userId) {
-      if (board.ownerId === userId) {
-        userRole = 'OWNER';
-      } else {
-        const member = board.members.find((m) => m.userId === userId);
-        if (member) {
-          userRole = member.role;
-        }
-      }
-    }
+    let userRole: Role | undefined = userId
+      ? this.resolveDirectMemberRole(board, userId)
+      : undefined;
 
     if (token) {
-      const tokenHash = this.hashToken(token);
-      const link = await this.prisma.shareLink.findUnique({
-        where: { tokenHash },
-      });
-
-      if (!link || link.boardId !== boardId || link.revokedAt !== null) {
-        throw new ForbiddenException('Invalid or revoked share link');
-      }
-
-      if (link.expiresAt && link.expiresAt < new Date()) {
-        throw new ForbiddenException('Share link has expired');
-      }
-
+      const link = await this.validateShareLink(boardId, token);
       if (!userRole || (userRole === 'VIEWER' && link.role === 'EDITOR')) {
         userRole = link.role;
       }
-
       if (userId && board.ownerId !== userId) {
-        await this.prisma.boardMember.upsert({
-          where: {
-            boardId_userId: { boardId, userId },
-          },
-          create: {
-            boardId,
-            userId,
-            role: userRole,
-          },
-          update: {
-            role: userRole,
-          },
-        });
+        await this.enrollUserFromShareLink(boardId, userId, userRole);
       }
     } else if (!userRole) {
       if (userId) {
         throw new ForbiddenException('Access denied to board');
-      } else {
-        throw new UnauthorizedException('Authentication or share link required');
       }
+      throw new UnauthorizedException('Authentication or share link required');
     }
 
     return {
@@ -315,32 +322,20 @@ export class BoardsService {
         },
       });
 
-      if (board) {
-        if (board.ownerId === user.id) {
-          resolvedRole = 'OWNER';
-        } else if (board.members.length > 0) {
-          resolvedRole = board.members[0].role;
-        } else if (!linkToken) {
-          throw new ForbiddenException('Access denied to board');
-        }
-      } else {
+      if (!board) {
         throw new NotFoundException('Board not found');
+      }
+
+      const directRole = this.resolveDirectMemberRole(board, user.id);
+      if (directRole) {
+        resolvedRole = directRole;
+      } else if (!linkToken) {
+        throw new ForbiddenException('Access denied to board');
       }
     }
 
     if (linkToken) {
-      const tokenHash = this.hashToken(linkToken);
-      const link = await this.prisma.shareLink.findUnique({
-        where: { tokenHash },
-      });
-
-      if (!link || link.boardId !== boardId || link.revokedAt !== null) {
-        throw new ForbiddenException('Invalid or revoked share link');
-      }
-
-      if (link.expiresAt && link.expiresAt < new Date()) {
-        throw new ForbiddenException('Share link has expired');
-      }
+      const link = await this.validateShareLink(boardId, linkToken);
 
       if (!user || resolvedRole === 'VIEWER' || link.role === 'EDITOR') {
         if (resolvedRole !== 'OWNER') {
@@ -352,19 +347,7 @@ export class BoardsService {
         resolvedUserId = `guest_${nanoid(8)}`;
         resolvedName = `Guest ${resolvedUserId.slice(-4)}`;
       } else if (resolvedRole !== 'OWNER') {
-        await this.prisma.boardMember.upsert({
-          where: {
-            boardId_userId: { boardId, userId: user.id },
-          },
-          create: {
-            boardId,
-            userId: user.id,
-            role: resolvedRole,
-          },
-          update: {
-            role: resolvedRole,
-          },
-        });
+        await this.enrollUserFromShareLink(boardId, user.id, resolvedRole);
       }
     }
 

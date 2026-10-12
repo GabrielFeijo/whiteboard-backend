@@ -9,13 +9,9 @@ import {
   Patch,
   Post,
   Query,
-  Req,
   UseGuards,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
-import { Request } from 'express';
-import { JwtService } from '@nestjs/jwt';
-import { ConfigService } from '@nestjs/config';
 import { BoardsService } from './boards.service';
 import { CreateBoardDto } from './dto/create-board.dto';
 import { UpdateBoardDto } from './dto/update-board.dto';
@@ -23,17 +19,13 @@ import { CreateLinkDto } from './dto/create-link.dto';
 import { AddMemberDto } from './dto/add-member.dto';
 import { WsTicketDto } from './dto/ws-ticket.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { CurrentUser } from '../auth/decorators/current-user.decorator';
-import { Env } from '../config/env';
+import { OptionalJwtAuthGuard } from '../auth/guards/optional-jwt-auth.guard';
+import { CurrentUser, AuthenticatedUser } from '../auth/decorators/current-user.decorator';
 
 @ApiTags('boards')
 @Controller('boards')
 export class BoardsController {
-  constructor(
-    private readonly boardsService: BoardsService,
-    private readonly jwtService: JwtService,
-    private readonly config: ConfigService<Env, true>,
-  ) {}
+  constructor(private readonly boardsService: BoardsService) {}
 
   @Post()
   @UseGuards(JwtAuthGuard)
@@ -56,26 +48,13 @@ export class BoardsController {
   }
 
   @Get(':id')
+  @UseGuards(OptionalJwtAuthGuard)
   @ApiOperation({ summary: 'Get board details and membership metadata' })
   async findOne(
     @Param('id') id: string,
-    @Req() req: Request,
+    @CurrentUser() user?: AuthenticatedUser,
     @Query('token') token?: string,
   ) {
-    let user: { id: string; name: string } | undefined;
-    const authHeader = req.headers.authorization;
-    if (authHeader && authHeader.startsWith('Bearer ')) {
-      try {
-        const jwtToken = authHeader.split(' ')[1];
-        const payload = await this.jwtService.verifyAsync(jwtToken, {
-          secret: this.config.get('JWT_ACCESS_SECRET', { infer: true }),
-        });
-        user = { id: payload.id, name: payload.name };
-      } catch {
-        user = undefined;
-      }
-    }
-
     return this.boardsService.findOne(id, user?.id, token);
   }
 
@@ -172,23 +151,14 @@ export class BoardsController {
   }
 
   @Post(':id/ws-ticket')
+  @UseGuards(OptionalJwtAuthGuard)
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Generate a single-use WebSocket ticket (TTL 30s)' })
-  async issueWsTicket(@Param('id') boardId: string, @Body() dto: WsTicketDto, @Req() req: Request) {
-    let user: { id: string; name: string } | undefined;
-    const authHeader = req.headers.authorization;
-    if (authHeader && authHeader.startsWith('Bearer ')) {
-      try {
-        const token = authHeader.split(' ')[1];
-        const payload = await this.jwtService.verifyAsync(token, {
-          secret: this.config.get('JWT_ACCESS_SECRET', { infer: true }),
-        });
-        user = { id: payload.id, name: payload.name };
-      } catch {
-        user = undefined;
-      }
-    }
-
+  async issueWsTicket(
+    @Param('id') boardId: string,
+    @Body() dto: WsTicketDto,
+    @CurrentUser() user?: AuthenticatedUser,
+  ) {
     return this.boardsService.issueWsTicket(boardId, user, dto?.token);
   }
 
