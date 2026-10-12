@@ -18,6 +18,7 @@ export class Room {
   readonly doc: Y.Doc;
   readonly awareness: awarenessProtocol.Awareness;
   readonly clients = new Map<WebSocket, ClientMeta>();
+  readonly clientIdsBySocket = new Map<WebSocket, Set<number>>();
   private readonly updateHandler: (update: Uint8Array, origin: unknown) => void;
   private readonly awarenessHandler: (
     changes: { added: number[]; updated: number[]; removed: number[] },
@@ -59,6 +60,18 @@ export class Room {
     this.doc.on('update', this.updateHandler);
 
     this.awarenessHandler = ({ added, updated, removed }, origin: unknown) => {
+      if (origin && this.clients.has(origin as WebSocket)) {
+        const ws = origin as WebSocket;
+        let set = this.clientIdsBySocket.get(ws);
+        if (!set) {
+          set = new Set();
+          this.clientIdsBySocket.set(ws, set);
+        }
+        for (const id of added) set.add(id);
+        for (const id of updated) set.add(id);
+        for (const id of removed) set.delete(id);
+      }
+
       const changedClients = added.concat(updated).concat(removed);
       const encoder = encoding.createEncoder();
       encoding.writeVarUint(encoder, MSG.AWARENESS);
@@ -94,6 +107,7 @@ export class Room {
 
   attach(ws: WebSocket, meta: ClientMeta) {
     this.clients.set(ws, meta);
+    this.clientIdsBySocket.set(ws, new Set());
 
     const encoder = encoding.createEncoder();
     encoding.writeVarUint(encoder, MSG.SYNC);
@@ -158,8 +172,21 @@ export class Room {
 
   detach(ws: WebSocket) {
     this.clients.delete(ws);
-
-    awarenessProtocol.removeAwarenessStates(this.awareness, [this.doc.clientID], null);
+    const clientIds = this.clientIdsBySocket.get(ws);
+    if (clientIds && clientIds.size > 0) {
+      awarenessProtocol.removeAwarenessStates(
+        this.awareness,
+        Array.from(clientIds),
+        null,
+      );
+    }
+    this.clientIdsBySocket.delete(ws);
+    if (this.clients.size === 0) {
+      const remainingIds = Array.from(this.awareness.getStates().keys());
+      if (remainingIds.length > 0) {
+        awarenessProtocol.removeAwarenessStates(this.awareness, remainingIds, null);
+      }
+    }
   }
 
   applyRemoteRedisUpdate(updateBase64: string) {

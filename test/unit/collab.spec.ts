@@ -1,6 +1,7 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import * as Y from 'yjs';
 import * as syncProtocol from 'y-protocols/sync';
+import * as awarenessProtocol from 'y-protocols/awareness';
 import * as encoding from 'lib0/encoding';
 import { Room } from '../../src/collab/room';
 import { MSG } from '../../src/shared';
@@ -71,5 +72,26 @@ describe('Room & Yjs Synchronization', () => {
 
     expect(room.doc.getText('text').toString()).toBe('Hello World');
     expect(mockPersistence.queueUpdate).toHaveBeenCalledWith('board-123', expect.any(Uint8Array));
+  });
+
+  it('prunes client awareness states when client detaches', () => {
+    const mockWs: any = { readyState: 1, send: vi.fn() };
+    room.attach(mockWs, { userId: 'u1', userName: 'Alice', role: 'EDITOR' });
+
+    const clientDoc = new Y.Doc();
+    const clientAw = new awarenessProtocol.Awareness(clientDoc);
+    clientAw.setLocalStateField('user', { name: 'Alice', color: '#10b981' });
+    const update = awarenessProtocol.encodeAwarenessUpdate(clientAw, [clientDoc.clientID]);
+
+    const encoder = encoding.createEncoder();
+    encoding.writeVarUint(encoder, MSG.AWARENESS);
+    encoding.writeVarUint8Array(encoder, update);
+    const msg = encoding.toUint8Array(encoder);
+
+    room.handleMessage(mockWs, msg);
+    expect(room.awareness.getStates().has(clientDoc.clientID)).toBe(true);
+
+    room.detach(mockWs);
+    expect(room.awareness.getStates().has(clientDoc.clientID)).toBe(false);
   });
 });
