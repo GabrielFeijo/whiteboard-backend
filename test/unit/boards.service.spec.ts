@@ -1,4 +1,6 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
+import { ForbiddenException, UnauthorizedException } from '@nestjs/common';
+import * as crypto from 'node:crypto';
 import { BoardsService } from '../../src/boards/boards.service';
 
 describe('BoardsService', () => {
@@ -16,6 +18,7 @@ describe('BoardsService', () => {
       },
       boardMember: {
         create: vi.fn(),
+        upsert: vi.fn().mockResolvedValue({}),
       },
       shareLink: {
         create: vi.fn(),
@@ -68,5 +71,92 @@ describe('BoardsService', () => {
       'EX',
       30,
     );
+  });
+
+  it('allows another user to access board via valid share token and enrolls member', async () => {
+    const rawToken = 'test-token-123';
+    const tokenHash = crypto.createHash('sha256').update(rawToken).digest('hex');
+
+    mockPrisma.board.findFirst.mockResolvedValue({
+      id: 'b1',
+      title: 'Shared Board',
+      ownerId: 'u1',
+      members: [],
+    });
+
+    mockPrisma.shareLink.findUnique.mockResolvedValue({
+      id: 'link1',
+      boardId: 'b1',
+      tokenHash,
+      role: 'EDITOR',
+      revokedAt: null,
+      expiresAt: null,
+    });
+
+    const res = await service.findOne('b1', 'u2', rawToken);
+    expect(res.role).toBe('EDITOR');
+    expect(mockPrisma.boardMember.upsert).toHaveBeenCalledWith({
+      where: { boardId_userId: { boardId: 'b1', userId: 'u2' } },
+      create: { boardId: 'b1', userId: 'u2', role: 'EDITOR' },
+      update: { role: 'EDITOR' },
+    });
+  });
+
+  it('allows anonymous guest to access board with valid share token', async () => {
+    const rawToken = 'test-token-guest';
+    const tokenHash = crypto.createHash('sha256').update(rawToken).digest('hex');
+
+    mockPrisma.board.findFirst.mockResolvedValue({
+      id: 'b1',
+      title: 'Guest Board',
+      ownerId: 'u1',
+      members: [],
+    });
+
+    mockPrisma.shareLink.findUnique.mockResolvedValue({
+      id: 'link1',
+      boardId: 'b1',
+      tokenHash,
+      role: 'VIEWER',
+      revokedAt: null,
+      expiresAt: null,
+    });
+
+    const res = await service.findOne('b1', undefined, rawToken);
+    expect(res.role).toBe('VIEWER');
+    expect(mockPrisma.boardMember.upsert).not.toHaveBeenCalled();
+  });
+
+  it('throws ForbiddenException on invalid or revoked share token', async () => {
+    mockPrisma.board.findFirst.mockResolvedValue({
+      id: 'b1',
+      ownerId: 'u1',
+      members: [],
+    });
+    mockPrisma.shareLink.findUnique.mockResolvedValue(null);
+
+    await expect(service.findOne('b1', 'u2', 'invalid-token')).rejects.toThrow(
+      ForbiddenException,
+    );
+  });
+
+  it('throws ForbiddenException when accessing board without token for non-member', async () => {
+    mockPrisma.board.findFirst.mockResolvedValue({
+      id: 'b1',
+      ownerId: 'u1',
+      members: [],
+    });
+
+    await expect(service.findOne('b1', 'u2')).rejects.toThrow(ForbiddenException);
+  });
+
+  it('throws UnauthorizedException when guest accesses without token', async () => {
+    mockPrisma.board.findFirst.mockResolvedValue({
+      id: 'b1',
+      ownerId: 'u1',
+      members: [],
+    });
+
+    await expect(service.findOne('b1')).rejects.toThrow(UnauthorizedException);
   });
 });
