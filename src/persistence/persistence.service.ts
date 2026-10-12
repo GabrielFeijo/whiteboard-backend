@@ -69,7 +69,6 @@ export class PersistenceService implements OnModuleInit, OnModuleDestroy {
       },
     });
 
-    // Compact: delete doc updates that occurred before the snapshot timestamp
     await this.prisma.docUpdate.deleteMany({
       where: {
         boardId,
@@ -78,7 +77,9 @@ export class PersistenceService implements OnModuleInit, OnModuleDestroy {
     });
   }
 
-  async loadInitialState(boardId: string): Promise<{ snapshot: Uint8Array | null; updates: Uint8Array[] }> {
+  async loadInitialState(
+    boardId: string,
+  ): Promise<{ snapshot: Uint8Array | null; updates: Uint8Array[] }> {
     const snapshot = await this.prisma.snapshot.findFirst({
       where: { boardId },
       orderBy: { createdAt: 'desc' },

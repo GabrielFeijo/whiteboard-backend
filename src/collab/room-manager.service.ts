@@ -19,10 +19,8 @@ export class RoomManagerService implements OnModuleInit, OnModuleDestroy {
   ) {}
 
   onModuleInit() {
-    // Dedicated redis subscriber for room pub/sub
     this.subscriberClient = this.redis.duplicate();
     this.subscriberClient.on('message', (channel, message) => {
-      // Channel: board:{boardId}:updates
       const matchUpdate = channel.match(/^board:(.+):updates$/);
       if (matchUpdate) {
         const boardId = matchUpdate[1];
@@ -33,7 +31,6 @@ export class RoomManagerService implements OnModuleInit, OnModuleDestroy {
         return;
       }
 
-      // Channel: board:{boardId}:restore
       const matchRestore = channel.match(/^board:(.+):restore$/);
       if (matchRestore) {
         const boardId = matchRestore[1];
@@ -65,7 +62,6 @@ export class RoomManagerService implements OnModuleInit, OnModuleDestroy {
   }
 
   async getOrLoadRoom(boardId: string): Promise<Room> {
-    // Cancel unload timer if scheduled
     const existingTimer = this.unloadTimers.get(boardId);
     if (existingTimer) {
       clearTimeout(existingTimer);
@@ -77,7 +73,6 @@ export class RoomManagerService implements OnModuleInit, OnModuleDestroy {
 
     room = new Room(boardId, this.persistence, this.redis);
 
-    // Hydrate from DB: snapshot + subsequent updates
     const initial = await this.persistence.loadInitialState(boardId);
     if (initial.snapshot) {
       Y.applyUpdate(room.doc, initial.snapshot);
@@ -89,12 +84,8 @@ export class RoomManagerService implements OnModuleInit, OnModuleDestroy {
     this.rooms.set(boardId, room);
     this.metrics.setActiveRooms(this.rooms.size);
 
-    // Subscribe to redis updates and restore events for this room
     if (this.subscriberClient) {
-      await this.subscriberClient.subscribe(
-        `board:${boardId}:updates`,
-        `board:${boardId}:restore`,
-      );
+      await this.subscriberClient.subscribe(`board:${boardId}:updates`, `board:${boardId}:restore`);
     }
 
     return room;
@@ -106,7 +97,6 @@ export class RoomManagerService implements OnModuleInit, OnModuleDestroy {
 
     if (this.unloadTimers.has(boardId)) return;
 
-    // After 60s idle with no connected clients: flush snapshot and unload from memory
     const timer = setTimeout(async () => {
       this.unloadTimers.delete(boardId);
       const activeRoom = this.rooms.get(boardId);

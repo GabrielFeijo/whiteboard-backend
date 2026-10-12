@@ -14,13 +14,11 @@ export class HealthController {
     @Inject(RedisService) private readonly redis: RedisService,
   ) {}
 
-  /** Liveness: o processo está de pé. */
   @Get('live')
   live() {
     return { status: 'ok' };
   }
 
-  /** Readiness: só libera o pod após conectar ao PostgreSQL e ao Redis (doc §19). */
   @Get('ready')
   @HealthCheck()
   ready() {

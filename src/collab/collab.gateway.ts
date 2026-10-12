@@ -34,7 +34,6 @@ export class CollabGateway implements OnGatewayConnection, OnGatewayDisconnect {
     private readonly config: ConfigService<Env, true>,
     private readonly metrics: MetricsService,
   ) {
-    // 25s Heartbeat ping/pong (doc §14.4)
     this.heartbeatInterval = setInterval(() => {
       for (const [ws, ctx] of this.socketContexts) {
         if (!ctx.isAlive) {
@@ -48,7 +47,6 @@ export class CollabGateway implements OnGatewayConnection, OnGatewayDisconnect {
   }
 
   async handleConnection(client: WebSocket, req: IncomingMessage) {
-    // 1. Origin verification (CSWSH protection, doc §14.4)
     const origin = req.headers.origin;
     const allowed = this.config.get('ALLOWED_ORIGINS', { infer: true });
     if (origin && !allowed.includes(origin)) {
@@ -56,7 +54,6 @@ export class CollabGateway implements OnGatewayConnection, OnGatewayDisconnect {
       return;
     }
 
-    // 2. Extract ticket from URL: /collab/:boardId?ticket=...
     const url = new URL(req.url || '', 'http://localhost');
     const ticket = url.searchParams.get('ticket');
     if (!ticket) {
@@ -70,7 +67,6 @@ export class CollabGateway implements OnGatewayConnection, OnGatewayDisconnect {
       return;
     }
 
-    // 3. Enforce connection limit (max 5 per user)
     let userConns = 0;
     for (const [, ctx] of this.socketContexts) {
       if (ctx.userId === payload.userId) userConns++;
@@ -80,7 +76,6 @@ export class CollabGateway implements OnGatewayConnection, OnGatewayDisconnect {
       return;
     }
 
-    // 4. Attach client context & heartbeat
     this.socketContexts.set(client, {
       userId: payload.userId,
       boardId: payload.boardId,
@@ -93,7 +88,6 @@ export class CollabGateway implements OnGatewayConnection, OnGatewayDisconnect {
       if (ctx) ctx.isAlive = true;
     });
 
-    // 5. Load room and attach socket
     const room = await this.roomManager.getOrLoadRoom(payload.boardId);
 
     if (room.clients.size >= LIMITS.MAX_PARTICIPANTS_PER_BOARD) {

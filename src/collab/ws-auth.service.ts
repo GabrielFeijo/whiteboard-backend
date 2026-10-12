@@ -15,7 +15,7 @@ export class WsAuthService {
 
   async consumeTicket(ticket: string): Promise<TicketPayload | null> {
     if (!ticket) return null;
-    // Atomic GETDEL guarantees single-use of ticket
+
     const raw = await this.redis.client.call('GETDEL', `ws:ticket:${ticket}`);
     if (!raw || typeof raw !== 'string') return null;
 
