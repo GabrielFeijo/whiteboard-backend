@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import { describe, expect, it, vi } from 'vitest';
 import { ForbiddenException } from '@nestjs/common';
 import { AssetsService } from '../../src/assets/assets.service';

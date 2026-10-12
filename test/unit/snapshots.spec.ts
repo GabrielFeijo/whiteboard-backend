@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import { describe, expect, it, vi } from 'vitest';
 import { ForbiddenException, NotFoundException } from '@nestjs/common';
 import { BoardsService } from '../../src/boards/boards.service';
@@ -54,9 +53,7 @@ describe('BoardsService - Snapshots & Restore', () => {
 
     const service = new BoardsService(mockPrisma, {} as any);
 
-    await expect(service.restoreSnapshot('b1', 's1', 'u3')).rejects.toThrow(
-      ForbiddenException,
-    );
+    await expect(service.restoreSnapshot('b1', 's1', 'u3')).rejects.toThrow(ForbiddenException);
   });
 
   it('restores snapshot and publishes event to Redis for OWNER', async () => {
@@ -102,10 +99,7 @@ describe('BoardsService - Snapshots & Restore', () => {
 
     expect(res.success).toBe(true);
     expect(res.version).toBe(3);
-    expect(publishSpy).toHaveBeenCalledWith(
-      'board:b1:restore',
-      expect.stringContaining('s1'),
-    );
+    expect(publishSpy).toHaveBeenCalledWith('board:b1:restore', expect.stringContaining('s1'));
   });
 
   it('throws NotFoundException if target snapshot does not exist', async () => {

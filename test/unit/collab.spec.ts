@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import * as Y from 'yjs';
 import * as syncProtocol from 'y-protocols/sync';
@@ -41,7 +40,6 @@ describe('Room & Yjs Synchronization', () => {
     const mockWs: any = { readyState: 1, send: vi.fn() };
     room.attach(mockWs, { userId: 'v1', userName: 'Bob Viewer', role: 'VIEWER' });
 
-    // Create an update from a client doc
     const clientDoc = new Y.Doc();
     clientDoc.getText('text').insert(0, 'Illegal Edit');
     const update = Y.encodeStateAsUpdate(clientDoc);
@@ -53,7 +51,6 @@ describe('Room & Yjs Synchronization', () => {
 
     room.handleMessage(mockWs, msg);
 
-    // Document in room should remain empty
     expect(room.doc.getText('text').toString()).toBe('');
   });
 
