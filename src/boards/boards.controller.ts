@@ -38,10 +38,7 @@ export class BoardsController {
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Create a new board' })
-  async create(
-    @CurrentUser('id') userId: string,
-    @Body() dto: CreateBoardDto,
-  ) {
+  async create(@CurrentUser('id') userId: string, @Body() dto: CreateBoardDto) {
     return this.boardsService.create(userId, dto);
   }
 
@@ -61,10 +58,7 @@ export class BoardsController {
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Get board details and membership metadata' })
-  async findOne(
-    @Param('id') id: string,
-    @CurrentUser('id') userId: string,
-  ) {
+  async findOne(@Param('id') id: string, @CurrentUser('id') userId: string) {
     return this.boardsService.findOne(id, userId);
   }
 
@@ -84,10 +78,7 @@ export class BoardsController {
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Duplicate a board and its latest snapshot' })
-  async duplicate(
-    @Param('id') id: string,
-    @CurrentUser('id') userId: string,
-  ) {
+  async duplicate(@Param('id') id: string, @CurrentUser('id') userId: string) {
     return this.boardsService.duplicate(id, userId);
   }
 
@@ -95,10 +86,7 @@ export class BoardsController {
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Soft-delete a board (owner only)' })
-  async remove(
-    @Param('id') id: string,
-    @CurrentUser('id') userId: string,
-  ) {
+  async remove(@Param('id') id: string, @CurrentUser('id') userId: string) {
     return this.boardsService.remove(id, userId);
   }
 
@@ -118,10 +106,7 @@ export class BoardsController {
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'List active share links' })
-  async listShareLinks(
-    @Param('id') id: string,
-    @CurrentUser('id') userId: string,
-  ) {
+  async listShareLinks(@Param('id') id: string, @CurrentUser('id') userId: string) {
     return this.boardsService.listShareLinks(id, userId);
   }
 
@@ -140,11 +125,7 @@ export class BoardsController {
   @Post(':id/ws-ticket')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Generate a single-use WebSocket ticket (TTL 30s)' })
-  async issueWsTicket(
-    @Param('id') boardId: string,
-    @Body() dto: WsTicketDto,
-    @Req() req: Request,
-  ) {
+  async issueWsTicket(@Param('id') boardId: string, @Body() dto: WsTicketDto, @Req() req: Request) {
     let user: { id: string; name: string } | undefined;
     const authHeader = req.headers.authorization;
     if (authHeader && authHeader.startsWith('Bearer ')) {
@@ -155,7 +136,7 @@ export class BoardsController {
         });
         user = { id: payload.id, name: payload.name };
       } catch {
-        // Token invalid, fall back to link token check
+        user = undefined;
       }
     }
 
@@ -166,10 +147,7 @@ export class BoardsController {
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'List historical snapshots of a board' })
-  async listSnapshots(
-    @Param('id') boardId: string,
-    @CurrentUser('id') userId: string,
-  ) {
+  async listSnapshots(@Param('id') boardId: string, @CurrentUser('id') userId: string) {
     return this.boardsService.listSnapshots(boardId, userId);
   }
 

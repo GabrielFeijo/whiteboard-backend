@@ -32,11 +32,7 @@ export class AssetsService {
     });
   }
 
-  async createPresignedUploadUrl(
-    boardId: string,
-    userId: string,
-    dto: PresignAssetDto,
-  ) {
+  async createPresignedUploadUrl(boardId: string, userId: string, dto: PresignAssetDto) {
     const board = await this.boardsService.findOne(boardId, userId);
     if (board.currentUserRole === 'VIEWER') {
       throw new ForbiddenException('Viewers cannot upload assets');
@@ -54,7 +50,7 @@ export class AssetsService {
     });
 
     const uploadUrl = await getSignedUrl(this.s3Client, command, {
-      expiresIn: 300, // 5 minutes
+      expiresIn: 300,
     });
 
     const assetUrl = `${this.endpoint}/${this.bucket}/${key}`;

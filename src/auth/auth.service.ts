@@ -37,7 +37,10 @@ export class AuthService {
     return argon2.verify(hash, password);
   }
 
-  private async generateTokens(user: { id: string; email: string; name: string }, familyId?: string) {
+  private async generateTokens(
+    user: { id: string; email: string; name: string },
+    familyId?: string,
+  ) {
     const payload = { id: user.id, email: user.email, name: user.name };
     const ttl = this.config.get('JWT_ACCESS_TTL', { infer: true });
 
@@ -48,7 +51,7 @@ export class AuthService {
 
     const rawRefreshToken = crypto.randomBytes(32).toString('hex');
     const tokenHash = this.hashToken(rawRefreshToken);
-    const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
+    const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
 
     await this.prisma.refreshToken.create({
       data: {
@@ -91,7 +94,9 @@ export class AuthService {
 
     const isLocked = await this.redis.client.get(lockoutKey);
     if (isLocked) {
-      throw new ForbiddenException('Account temporarily locked due to failed attempts. Try again in 15 minutes.');
+      throw new ForbiddenException(
+        'Account temporarily locked due to failed attempts. Try again in 15 minutes.',
+      );
     }
 
     const user = await this.prisma.user.findUnique({
@@ -109,7 +114,6 @@ export class AuthService {
       throw new UnauthorizedException('Invalid email or password');
     }
 
-    // Reset failed attempts on success
     await this.redis.client.del(attemptsKey);
 
     const safeUser = { id: user.id, email: user.email, name: user.name };
@@ -120,10 +124,10 @@ export class AuthService {
   private async handleFailedAttempt(attemptsKey: string, lockoutKey: string) {
     const attempts = await this.redis.client.incr(attemptsKey);
     if (attempts === 1) {
-      await this.redis.client.expire(attemptsKey, 900); // 15 mins window
+      await this.redis.client.expire(attemptsKey, 900);
     }
     if (attempts >= 5) {
-      await this.redis.client.set(lockoutKey, '1', 'EX', 900); // 15 mins lockout
+      await this.redis.client.set(lockoutKey, '1', 'EX', 900);
     }
   }
 
@@ -146,7 +150,6 @@ export class AuthService {
       throw new UnauthorizedException('Refresh token is expired or revoked');
     }
 
-    // Reuse detection: if already used, revoke the entire family!
     if (storedToken.usedAt) {
       await this.prisma.refreshToken.updateMany({
         where: { familyId: storedToken.familyId },
@@ -155,7 +158,6 @@ export class AuthService {
       throw new UnauthorizedException('Refresh token reuse detected. Token family revoked.');
     }
 
-    // Mark current token as used
     await this.prisma.refreshToken.update({
       where: { id: storedToken.id },
       data: { usedAt: new Date() },
@@ -192,7 +194,6 @@ export class AuthService {
   }
 
   async deleteMe(userId: string) {
-    // LGPD compliance: soft delete, revoke tokens, and anonymize user name
     await this.prisma.$transaction([
       this.prisma.refreshToken.updateMany({
         where: { userId },

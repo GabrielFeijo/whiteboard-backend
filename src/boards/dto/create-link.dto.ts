@@ -12,6 +12,6 @@ export class CreateLinkDto {
   @IsOptional()
   @IsInt()
   @Min(1)
-  @Max(720) // max 30 days
+  @Max(720)
   expiresInHours?: number;
 }

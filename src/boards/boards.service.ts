@@ -207,7 +207,7 @@ export class BoardsService {
     return {
       id: link.id,
       boardId: link.boardId,
-      token: rawToken, // Returned ONLY once upon creation!
+      token: rawToken,
       role: link.role,
       expiresAt: link.expiresAt,
     };
@@ -242,7 +242,6 @@ export class BoardsService {
       data: { revokedAt: new Date() },
     });
 
-    // Notify collab server via Redis to disconnect affected sockets immediately
     await this.redis.client.publish(
       `board:${boardId}:acl`,
       JSON.stringify({ type: 'REVOKE_LINK', linkId }),
@@ -251,11 +250,7 @@ export class BoardsService {
     return updated;
   }
 
-  async issueWsTicket(
-    boardId: string,
-    user?: { id: string; name: string },
-    linkToken?: string,
-  ) {
+  async issueWsTicket(boardId: string, user?: { id: string; name: string }, linkToken?: string) {
     let resolvedRole: Role = 'VIEWER';
     let resolvedUserId = user ? user.id : '';
     let resolvedName = user ? user.name : 'Anonymous Guest';
@@ -281,7 +276,6 @@ export class BoardsService {
       }
     }
 
-    // If joining as guest or via linkToken
     if ((!user || resolvedRole === 'VIEWER') && linkToken) {
       const tokenHash = this.hashToken(linkToken);
       const link = await this.prisma.shareLink.findUnique({
@@ -315,7 +309,6 @@ export class BoardsService {
       role: resolvedRole,
     });
 
-    // Save ticket with 30s TTL in Redis (consumed via GETDEL on connect)
     await this.redis.client.set(`ws:ticket:${ticket}`, ticketPayload, 'EX', 30);
 
     return {
@@ -384,7 +377,6 @@ export class BoardsService {
       },
     });
 
-    // Notify collab server via Redis pub/sub to update live doc and connected clients
     await this.redis.client.publish(
       `board:${boardId}:restore`,
       JSON.stringify({

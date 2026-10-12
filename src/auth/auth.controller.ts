@@ -53,10 +53,7 @@ export class AuthController {
 
   @Post('register')
   @ApiOperation({ summary: 'Register a new user' })
-  async register(
-    @Body() dto: RegisterDto,
-    @Res({ passthrough: true }) res: Response,
-  ) {
+  async register(@Body() dto: RegisterDto, @Res({ passthrough: true }) res: Response) {
     const result = await this.authService.register(dto);
     this.setRefreshCookie(res, result.refreshToken);
     return {
@@ -87,10 +84,7 @@ export class AuthController {
   @Post('refresh')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Rotate refresh token and get a new access token' })
-  async refresh(
-    @Req() req: Request,
-    @Res({ passthrough: true }) res: Response,
-  ) {
+  async refresh(@Req() req: Request, @Res({ passthrough: true }) res: Response) {
     const cookieName = this.config.get('REFRESH_COOKIE_NAME', { infer: true });
     const refreshToken = req.cookies?.[cookieName] || req.body?.refreshToken;
     const result = await this.authService.refresh(refreshToken);
@@ -105,10 +99,7 @@ export class AuthController {
   @Post('logout')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Logout and invalidate refresh token' })
-  async logout(
-    @Req() req: Request,
-    @Res({ passthrough: true }) res: Response,
-  ) {
+  async logout(@Req() req: Request, @Res({ passthrough: true }) res: Response) {
     const cookieName = this.config.get('REFRESH_COOKIE_NAME', { infer: true });
     const refreshToken = req.cookies?.[cookieName];
     await this.authService.logout(refreshToken);
@@ -128,10 +119,7 @@ export class AuthController {
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Delete and anonymize account (LGPD)' })
-  async deleteMe(
-    @CurrentUser('id') userId: string,
-    @Res({ passthrough: true }) res: Response,
-  ) {
+  async deleteMe(@CurrentUser('id') userId: string, @Res({ passthrough: true }) res: Response) {
     const result = await this.authService.deleteMe(userId);
     this.clearRefreshCookie(res);
     return result;
