@@ -12,6 +12,8 @@ import { RoomManagerService } from './room-manager.service';
 import { WS_CLOSE, LIMITS } from '../shared';
 import { Env } from '../config/env';
 
+import { MetricsService } from '../metrics/metrics.service';
+
 interface ClientSocketContext {
   userId: string;
   boardId: string;
@@ -30,6 +32,7 @@ export class CollabGateway implements OnGatewayConnection, OnGatewayDisconnect {
     private readonly wsAuth: WsAuthService,
     private readonly roomManager: RoomManagerService,
     private readonly config: ConfigService<Env, true>,
+    private readonly metrics: MetricsService,
   ) {
     // 25s Heartbeat ping/pong (doc §14.4)
     this.heartbeatInterval = setInterval(() => {
@@ -83,6 +86,7 @@ export class CollabGateway implements OnGatewayConnection, OnGatewayDisconnect {
       boardId: payload.boardId,
       isAlive: true,
     });
+    this.metrics.setActiveConnections(this.socketContexts.size);
 
     client.on('pong', () => {
       const ctx = this.socketContexts.get(client);
@@ -94,6 +98,8 @@ export class CollabGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
     if (room.clients.size >= LIMITS.MAX_PARTICIPANTS_PER_BOARD) {
       client.close(WS_CLOSE.RATE_LIMITED, 'Room capacity exceeded');
+      this.socketContexts.delete(client);
+      this.metrics.setActiveConnections(this.socketContexts.size);
       return;
     }
 
@@ -108,6 +114,7 @@ export class CollabGateway implements OnGatewayConnection, OnGatewayDisconnect {
         client.close(WS_CLOSE.RATE_LIMITED, 'Message exceeds 1MB limit');
         return;
       }
+      this.metrics.incrementSyncMessages();
       room.handleMessage(client, new Uint8Array(raw));
     });
   }
@@ -116,6 +123,7 @@ export class CollabGateway implements OnGatewayConnection, OnGatewayDisconnect {
     const ctx = this.socketContexts.get(client);
     if (ctx) {
       this.socketContexts.delete(client);
+      this.metrics.setActiveConnections(this.socketContexts.size);
       this.roomManager.getOrLoadRoom(ctx.boardId).then((room) => {
         room.detach(client);
         this.roomManager.scheduleUnload(ctx.boardId);

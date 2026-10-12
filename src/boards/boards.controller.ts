@@ -161,4 +161,27 @@ export class BoardsController {
 
     return this.boardsService.issueWsTicket(boardId, user, dto?.token);
   }
+
+  @Get(':id/snapshots')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'List historical snapshots of a board' })
+  async listSnapshots(
+    @Param('id') boardId: string,
+    @CurrentUser('id') userId: string,
+  ) {
+    return this.boardsService.listSnapshots(boardId, userId);
+  }
+
+  @Post(':id/snapshots/:snapshotId/restore')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Restore board canvas from a snapshot' })
+  async restoreSnapshot(
+    @Param('id') boardId: string,
+    @Param('snapshotId') snapshotId: string,
+    @CurrentUser('id') userId: string,
+  ) {
+    return this.boardsService.restoreSnapshot(boardId, snapshotId, userId);
+  }
 }

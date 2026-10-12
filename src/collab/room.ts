@@ -181,6 +181,28 @@ export class Room {
     Y.applyUpdate(this.doc, update, 'redis');
   }
 
+  restoreSnapshot(snapshotData: Uint8Array) {
+    this.doc.transact(() => {
+      const roots = getDocRoots(this.doc);
+      roots.elements.forEach((_val: unknown, key: string) => {
+        roots.elements.delete(key);
+      });
+    }, 'restore');
+
+    Y.applyUpdate(this.doc, snapshotData, 'restore');
+
+    const encoder = encoding.createEncoder();
+    encoding.writeVarUint(encoder, MSG.SYNC);
+    syncProtocol.writeUpdate(encoder, Y.encodeStateAsUpdate(this.doc));
+    const message = encoding.toUint8Array(encoder);
+
+    for (const [ws] of this.clients) {
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.send(message);
+      }
+    }
+  }
+
   destroy() {
     if (this.snapshotInterval) clearInterval(this.snapshotInterval);
     this.doc.off('update', this.updateHandler);

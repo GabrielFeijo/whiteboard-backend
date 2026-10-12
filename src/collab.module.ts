@@ -4,6 +4,7 @@ import { HealthModule } from './health/health.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { RedisModule } from './redis/redis.module';
 import { PersistenceModule } from './persistence/persistence.module';
+import { MetricsModule } from './metrics/metrics.module';
 import { WsAuthService } from './collab/ws-auth.service';
 import { RoomManagerService } from './collab/room-manager.service';
 import { CollabGateway } from './collab/collab.gateway';
@@ -15,6 +16,7 @@ import { CollabGateway } from './collab/collab.gateway';
     RedisModule,
     HealthModule,
     PersistenceModule,
+    MetricsModule,
   ],
   providers: [WsAuthService, RoomManagerService, CollabGateway],
 })

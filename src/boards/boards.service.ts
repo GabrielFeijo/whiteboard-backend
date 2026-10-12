@@ -326,4 +326,80 @@ export class BoardsService {
       userName: resolvedName,
     };
   }
+
+  async listSnapshots(boardId: string, userId: string) {
+    await this.findOne(boardId, userId);
+
+    const snapshots = await this.prisma.snapshot.findMany({
+      where: { boardId },
+      orderBy: { createdAt: 'desc' },
+      take: 50,
+      select: {
+        id: true,
+        boardId: true,
+        version: true,
+        reason: true,
+        createdAt: true,
+        data: true,
+      },
+    });
+
+    return snapshots.map((s) => ({
+      id: s.id,
+      boardId: s.boardId,
+      version: s.version,
+      reason: s.reason,
+      createdAt: s.createdAt,
+      size: s.data.length,
+    }));
+  }
+
+  async restoreSnapshot(boardId: string, snapshotId: string, userId: string) {
+    const board = await this.findOne(boardId, userId);
+    if (board.currentUserRole !== 'OWNER' && board.currentUserRole !== 'EDITOR') {
+      throw new ForbiddenException('Only owners and editors can restore snapshots');
+    }
+
+    const targetSnapshot = await this.prisma.snapshot.findFirst({
+      where: { id: snapshotId, boardId },
+    });
+
+    if (!targetSnapshot) {
+      throw new NotFoundException('Snapshot not found');
+    }
+
+    const latestSnapshot = await this.prisma.snapshot.findFirst({
+      where: { boardId },
+      orderBy: { version: 'desc' },
+    });
+
+    const newVersion = (latestSnapshot?.version || targetSnapshot.version) + 1;
+
+    const restoredRecord = await this.prisma.snapshot.create({
+      data: {
+        boardId,
+        data: targetSnapshot.data,
+        version: newVersion,
+        reason: `RESTORED_FROM_V${targetSnapshot.version}`,
+      },
+    });
+
+    // Notify collab server via Redis pub/sub to update live doc and connected clients
+    await this.redis.client.publish(
+      `board:${boardId}:restore`,
+      JSON.stringify({
+        snapshotId: targetSnapshot.id,
+        version: newVersion,
+        data: Buffer.from(targetSnapshot.data).toString('base64'),
+      }),
+    );
+
+    return {
+      success: true,
+      id: restoredRecord.id,
+      version: restoredRecord.version,
+      restoredFromVersion: targetSnapshot.version,
+      createdAt: restoredRecord.createdAt,
+    };
+  }
 }

@@ -4,6 +4,7 @@ import Redis from 'ioredis';
 import { Room } from './room';
 import { PersistenceService } from '../persistence/persistence.service';
 import { RedisService } from '../redis/redis.service';
+import { MetricsService } from '../metrics/metrics.service';
 
 @Injectable()
 export class RoomManagerService implements OnModuleInit, OnModuleDestroy {
@@ -14,6 +15,7 @@ export class RoomManagerService implements OnModuleInit, OnModuleDestroy {
   constructor(
     private readonly persistence: PersistenceService,
     private readonly redis: RedisService,
+    private readonly metrics: MetricsService,
   ) {}
 
   onModuleInit() {
@@ -21,12 +23,29 @@ export class RoomManagerService implements OnModuleInit, OnModuleDestroy {
     this.subscriberClient = this.redis.duplicate();
     this.subscriberClient.on('message', (channel, message) => {
       // Channel: board:{boardId}:updates
-      const match = channel.match(/^board:(.+):updates$/);
-      if (match) {
-        const boardId = match[1];
+      const matchUpdate = channel.match(/^board:(.+):updates$/);
+      if (matchUpdate) {
+        const boardId = matchUpdate[1];
         const room = this.rooms.get(boardId);
         if (room) {
           room.applyRemoteRedisUpdate(message);
+        }
+        return;
+      }
+
+      // Channel: board:{boardId}:restore
+      const matchRestore = channel.match(/^board:(.+):restore$/);
+      if (matchRestore) {
+        const boardId = matchRestore[1];
+        const room = this.rooms.get(boardId);
+        if (room) {
+          try {
+            const payload = JSON.parse(message);
+            const snapshotBuffer = Buffer.from(payload.data, 'base64');
+            room.restoreSnapshot(new Uint8Array(snapshotBuffer));
+          } catch (err) {
+            console.error('Failed to apply restored snapshot to room', err);
+          }
         }
       }
     });
@@ -68,10 +87,14 @@ export class RoomManagerService implements OnModuleInit, OnModuleDestroy {
     }
 
     this.rooms.set(boardId, room);
+    this.metrics.setActiveRooms(this.rooms.size);
 
-    // Subscribe to redis updates for this room
+    // Subscribe to redis updates and restore events for this room
     if (this.subscriberClient) {
-      await this.subscriberClient.subscribe(`board:${boardId}:updates`);
+      await this.subscriberClient.subscribe(
+        `board:${boardId}:updates`,
+        `board:${boardId}:restore`,
+      );
     }
 
     return room;
@@ -91,8 +114,12 @@ export class RoomManagerService implements OnModuleInit, OnModuleDestroy {
         await activeRoom.createSnapshot();
         activeRoom.destroy();
         this.rooms.delete(boardId);
+        this.metrics.setActiveRooms(this.rooms.size);
         if (this.subscriberClient) {
-          await this.subscriberClient.unsubscribe(`board:${boardId}:updates`);
+          await this.subscriberClient.unsubscribe(
+            `board:${boardId}:updates`,
+            `board:${boardId}:restore`,
+          );
         }
       }
     }, 60_000);
