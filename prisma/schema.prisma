@@ -1,0 +1,107 @@
+generator client {
+  provider = "prisma-client-js"
+  binaryTargets = ["native", "linux-musl-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  OWNER
+  EDITOR
+  VIEWER
+}
+
+model User {
+  id           String        @id @default(cuid())
+  email        String        @unique
+  name         String
+  avatarUrl    String?
+  passwordHash String
+  failedLogins Int           @default(0)
+  lockedUntil  DateTime?
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  deletedAt    DateTime?
+  boards       Board[]       @relation("BoardOwner")
+  memberships  BoardMember[]
+  tokens       RefreshToken[]
+}
+
+model RefreshToken {
+  id         String    @id @default(cuid())
+  userId     String
+  familyId   String    // reuso de um token da família revoga toda a família
+  tokenHash  String    @unique
+  expiresAt  DateTime
+  usedAt     DateTime?
+  revokedAt  DateTime?
+  createdAt  DateTime  @default(now())
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([familyId])
+}
+
+model Board {
+  id        String        @id @default(cuid())
+  title     String
+  ownerId   String
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+  deletedAt DateTime?
+  owner     User          @relation("BoardOwner", fields: [ownerId], references: [id])
+  members   BoardMember[]
+  links     ShareLink[]
+  snapshots Snapshot[]
+  updates   DocUpdate[]
+
+  @@index([ownerId])
+}
+
+model BoardMember {
+  boardId String
+  userId  String
+  role    Role
+  board   Board  @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  user    User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([boardId, userId])
+}
+
+model ShareLink {
+  id        String    @id @default(cuid())
+  boardId   String
+  tokenHash String    @unique // SHA-256 do token; o token em si nunca é salvo
+  role      Role      @default(VIEWER)
+  expiresAt DateTime?
+  revokedAt DateTime?
+  createdAt DateTime  @default(now())
+  board     Board     @relation(fields: [boardId], references: [id], onDelete: Cascade)
+
+  @@index([boardId])
+}
+
+model Snapshot {
+  id        String   @id @default(cuid())
+  boardId   String
+  data      Bytes // Y.encodeStateAsUpdate
+  version   Int
+  createdAt DateTime @default(now())
+  reason    String // AUTO | MANUAL | PRE_RESTORE
+  board     Board    @relation(fields: [boardId], references: [id], onDelete: Cascade)
+
+  @@index([boardId, createdAt])
+}
+
+model DocUpdate {
+  id        BigInt   @id @default(autoincrement())
+  boardId   String
+  data      Bytes
+  createdAt DateTime @default(now())
+  board     Board    @relation(fields: [boardId], references: [id], onDelete: Cascade)
+
+  @@index([boardId, id])
+}
