@@ -55,11 +55,27 @@ export class BoardsController {
   }
 
   @Get(':id')
-  @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth()
   @ApiOperation({ summary: 'Get board details and membership metadata' })
-  async findOne(@Param('id') id: string, @CurrentUser('id') userId: string) {
-    return this.boardsService.findOne(id, userId);
+  async findOne(
+    @Param('id') id: string,
+    @Req() req: Request,
+    @Query('token') token?: string,
+  ) {
+    let user: { id: string; name: string } | undefined;
+    const authHeader = req.headers.authorization;
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      try {
+        const jwtToken = authHeader.split(' ')[1];
+        const payload = await this.jwtService.verifyAsync(jwtToken, {
+          secret: this.config.get('JWT_ACCESS_SECRET', { infer: true }),
+        });
+        user = { id: payload.id, name: payload.name };
+      } catch {
+        user = undefined;
+      }
+    }
+
+    return this.boardsService.findOne(id, user?.id, token);
   }
 
   @Patch(':id')

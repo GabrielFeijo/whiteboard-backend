@@ -3,6 +3,7 @@ import {
   ForbiddenException,
   Injectable,
   NotFoundException,
+  UnauthorizedException,
 } from '@nestjs/common';
 import * as crypto from 'node:crypto';
 import { nanoid } from 'nanoid';
@@ -89,7 +90,7 @@ export class BoardsService {
     };
   }
 
-  async findOne(boardId: string, userId: string) {
+  async findOne(boardId: string, userId?: string, token?: string) {
     const board = await this.prisma.board.findFirst({
       where: { id: boardId, deletedAt: null },
       include: {
@@ -106,14 +107,64 @@ export class BoardsService {
       throw new NotFoundException('Board not found');
     }
 
-    const member = board.members.find((m) => m.userId === userId);
-    if (!member && board.ownerId !== userId) {
-      throw new ForbiddenException('Access denied to board');
+    let userRole: Role | undefined;
+
+    if (userId) {
+      if (board.ownerId === userId) {
+        userRole = 'OWNER';
+      } else {
+        const member = board.members.find((m) => m.userId === userId);
+        if (member) {
+          userRole = member.role;
+        }
+      }
+    }
+
+    if (!userRole) {
+      if (!token) {
+        if (userId) {
+          throw new ForbiddenException('Access denied to board');
+        } else {
+          throw new UnauthorizedException('Authentication or share link required');
+        }
+      }
+
+      const tokenHash = this.hashToken(token);
+      const link = await this.prisma.shareLink.findUnique({
+        where: { tokenHash },
+      });
+
+      if (!link || link.boardId !== boardId || link.revokedAt !== null) {
+        throw new ForbiddenException('Invalid or revoked share link');
+      }
+
+      if (link.expiresAt && link.expiresAt < new Date()) {
+        throw new ForbiddenException('Share link has expired');
+      }
+
+      userRole = link.role;
+
+      if (userId) {
+        await this.prisma.boardMember.upsert({
+          where: {
+            boardId_userId: { boardId, userId },
+          },
+          create: {
+            boardId,
+            userId,
+            role: link.role,
+          },
+          update: {
+            role: link.role,
+          },
+        });
+      }
     }
 
     return {
       ...board,
-      currentUserRole: member?.role || (board.ownerId === userId ? 'OWNER' : 'VIEWER'),
+      role: userRole,
+      currentUserRole: userRole,
     };
   }
 
@@ -294,6 +345,20 @@ export class BoardsService {
       if (!user) {
         resolvedUserId = `guest_${nanoid(8)}`;
         resolvedName = `Guest ${resolvedUserId.slice(-4)}`;
+      } else if (resolvedRole !== 'OWNER') {
+        await this.prisma.boardMember.upsert({
+          where: {
+            boardId_userId: { boardId, userId: user.id },
+          },
+          create: {
+            boardId,
+            userId: user.id,
+            role: resolvedRole,
+          },
+          update: {
+            role: resolvedRole,
+          },
+        });
       }
     }
 
