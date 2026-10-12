@@ -1,4 +1,3 @@
-// Healthcheck sem dependências externas: GET /health/live na porta do serviço.
 const http = require('node:http');
 
 const port = process.env.HEALTH_PORT || 3001;

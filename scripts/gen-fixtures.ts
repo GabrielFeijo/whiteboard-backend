@@ -1,8 +1,3 @@
-/**
- * Gera fixtures/protocol/*.json a partir de src/shared (fonte da verdade).
- * Os mesmos arquivos são copiados para o frontend (`npm run sync:shared` lá)
- * e validados pelos testes de contrato nos dois repositórios.
- */
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import * as Y from 'yjs';
@@ -23,7 +18,6 @@ const b64 = (u: Uint8Array) => Buffer.from(u).toString('base64');
 const write = (name: string, data: unknown) =>
   writeFileSync(join(out, name), JSON.stringify(data, null, 2) + '\n');
 
-// Cada cliente usa clientID fixo para saída determinística.
 function doc(clientID: number) {
   const d = new Y.Doc();
   d.clientID = clientID;
@@ -54,7 +48,6 @@ function addRect(d: Y.Doc, id: string, x: number, y: number, createdBy: string) 
 
 const snap = (d: Y.Doc) => getDocRoots(d).elements.toJSON();
 
-// 1) constantes
 write('constants.json', {
   SHARED_VERSION,
   SCHEMA_VERSION,
@@ -64,7 +57,6 @@ write('constants.json', {
   LIMITS,
 });
 
-// 2) documento básico: um único update cria um retângulo
 const a = doc(1001);
 addRect(a, 'r1', 10, 20, 'u1');
 write('doc-basic.json', {
@@ -73,7 +65,6 @@ write('doc-basic.json', {
   expected: snap(a),
 });
 
-// 3) edição concorrente: A move (x,y), B muda cor (style.fill) do mesmo elemento
 const base = doc(1001);
 addRect(base, 'r1', 0, 0, 'u1');
 const baseUpdate = Y.encodeStateAsUpdate(base);
