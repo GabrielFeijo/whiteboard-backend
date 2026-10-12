@@ -28,37 +28,48 @@ export class AuthController {
     private readonly config: ConfigService<Env, true>,
   ) {}
 
-  private setRefreshCookie(res: Response, token: string) {
+  private setRefreshCookie(res: Response, token: string, req?: Request) {
     const cookieName = this.config.get('REFRESH_COOKIE_NAME', { infer: true });
     const isProd = this.config.get('NODE_ENV', { infer: true }) === 'production';
+    const host = req?.headers.host || '';
+    const isLocalhost = host.includes('localhost') || host.includes('127.0.0.1');
+    const secure = isProd && !isLocalhost;
     res.cookie(cookieName, token, {
       httpOnly: true,
-      secure: isProd,
+      secure,
       sameSite: 'lax',
-      path: '/v1/auth',
+      path: '/',
       maxAge: 7 * 24 * 60 * 60 * 1000,
     });
   }
 
-  private clearRefreshCookie(res: Response) {
+  private clearRefreshCookie(res: Response, req?: Request) {
     const cookieName = this.config.get('REFRESH_COOKIE_NAME', { infer: true });
     const isProd = this.config.get('NODE_ENV', { infer: true }) === 'production';
+    const host = req?.headers.host || '';
+    const isLocalhost = host.includes('localhost') || host.includes('127.0.0.1');
+    const secure = isProd && !isLocalhost;
     res.clearCookie(cookieName, {
       httpOnly: true,
-      secure: isProd,
+      secure,
       sameSite: 'lax',
-      path: '/v1/auth',
+      path: '/',
     });
   }
 
   @Post('register')
   @ApiOperation({ summary: 'Register a new user' })
-  async register(@Body() dto: RegisterDto, @Res({ passthrough: true }) res: Response) {
+  async register(
+    @Body() dto: RegisterDto,
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ) {
     const result = await this.authService.register(dto);
-    this.setRefreshCookie(res, result.refreshToken);
+    this.setRefreshCookie(res, result.refreshToken, req);
     return {
       user: result.user,
       accessToken: result.accessToken,
+      refreshToken: result.refreshToken,
       expiresIn: result.expiresIn,
     };
   }
@@ -73,10 +84,11 @@ export class AuthController {
   ) {
     const ip = req.ip || req.socket.remoteAddress;
     const result = await this.authService.login(dto, ip);
-    this.setRefreshCookie(res, result.refreshToken);
+    this.setRefreshCookie(res, result.refreshToken, req);
     return {
       user: result.user,
       accessToken: result.accessToken,
+      refreshToken: result.refreshToken,
       expiresIn: result.expiresIn,
     };
   }
@@ -88,10 +100,11 @@ export class AuthController {
     const cookieName = this.config.get('REFRESH_COOKIE_NAME', { infer: true });
     const refreshToken = req.cookies?.[cookieName] || req.body?.refreshToken;
     const result = await this.authService.refresh(refreshToken);
-    this.setRefreshCookie(res, result.refreshToken);
+    this.setRefreshCookie(res, result.refreshToken, req);
     return {
       user: result.user,
       accessToken: result.accessToken,
+      refreshToken: result.refreshToken,
       expiresIn: result.expiresIn,
     };
   }
@@ -101,9 +114,9 @@ export class AuthController {
   @ApiOperation({ summary: 'Logout and invalidate refresh token' })
   async logout(@Req() req: Request, @Res({ passthrough: true }) res: Response) {
     const cookieName = this.config.get('REFRESH_COOKIE_NAME', { infer: true });
-    const refreshToken = req.cookies?.[cookieName];
+    const refreshToken = req.cookies?.[cookieName] || req.body?.refreshToken;
     await this.authService.logout(refreshToken);
-    this.clearRefreshCookie(res);
+    this.clearRefreshCookie(res, req);
     return { success: true };
   }
 
@@ -119,9 +132,13 @@ export class AuthController {
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Delete and anonymize account (LGPD)' })
-  async deleteMe(@CurrentUser('id') userId: string, @Res({ passthrough: true }) res: Response) {
+  async deleteMe(
+    @CurrentUser('id') userId: string,
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ) {
     const result = await this.authService.deleteMe(userId);
-    this.clearRefreshCookie(res);
+    this.clearRefreshCookie(res, req);
     return result;
   }
 }
