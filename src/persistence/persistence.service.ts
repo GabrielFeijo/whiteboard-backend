@@ -1,16 +1,20 @@
-import { Injectable, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 
 @Injectable()
 export class PersistenceService implements OnModuleInit, OnModuleDestroy {
+  private readonly logger = new Logger(PersistenceService.name);
   private buffer = new Map<string, Uint8Array[]>();
   private flushTimer: NodeJS.Timeout | null = null;
+  private isFlushing = false;
 
   constructor(private readonly prisma: PrismaService) {}
 
   onModuleInit() {
     this.flushTimer = setInterval(() => {
-      this.flushAll().catch(console.error);
+      this.flushAll().catch((err) => {
+        this.logger.error('Scheduled flushAll failed', err);
+      });
     }, 500);
   }
 
@@ -28,7 +32,9 @@ export class PersistenceService implements OnModuleInit, OnModuleDestroy {
     list.push(update);
 
     if (list.length >= 50) {
-      this.flushBoard(boardId).catch(console.error);
+      this.flushBoard(boardId).catch((err) => {
+        this.logger.error(`Immediate buffer flush failed for board ${boardId}`, err);
+      });
     }
   }
 
@@ -46,8 +52,14 @@ export class PersistenceService implements OnModuleInit, OnModuleDestroy {
   }
 
   async flushAll() {
-    const boardIds = Array.from(this.buffer.keys());
-    await Promise.all(boardIds.map((id) => this.flushBoard(id)));
+    if (this.isFlushing) return;
+    this.isFlushing = true;
+    try {
+      const boardIds = Array.from(this.buffer.keys());
+      await Promise.all(boardIds.map((id) => this.flushBoard(id)));
+    } finally {
+      this.isFlushing = false;
+    }
   }
 
   async saveSnapshot(boardId: string, snapshotBytes: Uint8Array, reason = 'AUTO'): Promise<void> {
