@@ -1,4 +1,4 @@
-import { Injectable, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import * as Y from 'yjs';
 import Redis from 'ioredis';
 import { Room } from './room';
@@ -8,7 +8,9 @@ import { MetricsService } from '../metrics/metrics.service';
 
 @Injectable()
 export class RoomManagerService implements OnModuleInit, OnModuleDestroy {
+  private readonly logger = new Logger(RoomManagerService.name);
   private rooms = new Map<string, Room>();
+  private roomLoadingPromises = new Map<string, Promise<Room>>();
   private unloadTimers = new Map<string, NodeJS.Timeout>();
   private subscriberClient: Redis | null = null;
 
@@ -41,7 +43,7 @@ export class RoomManagerService implements OnModuleInit, OnModuleDestroy {
             const snapshotBuffer = Buffer.from(payload.data, 'base64');
             room.restoreSnapshot(new Uint8Array(snapshotBuffer));
           } catch (err) {
-            console.error('Failed to apply restored snapshot to room', err);
+            this.logger.error(`Failed to apply restored snapshot to room ${boardId}`, err);
           }
         }
       }
@@ -68,10 +70,22 @@ export class RoomManagerService implements OnModuleInit, OnModuleDestroy {
       this.unloadTimers.delete(boardId);
     }
 
-    let room = this.rooms.get(boardId);
-    if (room) return room;
+    const existingRoom = this.rooms.get(boardId);
+    if (existingRoom) return existingRoom;
 
-    room = new Room(boardId, this.persistence, this.redis);
+    const inFlight = this.roomLoadingPromises.get(boardId);
+    if (inFlight) return inFlight;
+
+    const loadPromise = this.internalLoadRoom(boardId).finally(() => {
+      this.roomLoadingPromises.delete(boardId);
+    });
+
+    this.roomLoadingPromises.set(boardId, loadPromise);
+    return loadPromise;
+  }
+
+  private async internalLoadRoom(boardId: string): Promise<Room> {
+    const room = new Room(boardId, this.persistence, this.redis);
 
     const initial = await this.persistence.loadInitialState(boardId);
     if (initial.snapshot) {

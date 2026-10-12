@@ -1,3 +1,4 @@
+import { Logger } from '@nestjs/common';
 import * as Y from 'yjs';
 import * as syncProtocol from 'y-protocols/sync';
 import * as awarenessProtocol from 'y-protocols/awareness';
@@ -15,6 +16,7 @@ export interface ClientMeta {
 }
 
 export class Room {
+  private readonly logger = new Logger(Room.name);
   readonly doc: Y.Doc;
   readonly awareness: awarenessProtocol.Awareness;
   readonly clients = new Map<WebSocket, ClientMeta>();
@@ -52,7 +54,9 @@ export class Room {
       if (origin !== 'redis') {
         this.redis.client
           .publish(`board:${this.boardId}:updates`, Buffer.from(update).toString('base64'))
-          .catch(console.error);
+          .catch((err) => {
+            this.logger.error(`Redis publish update failed for board ${this.boardId}`, err);
+          });
 
         this.persistence.queueUpdate(this.boardId, update);
       }
@@ -92,7 +96,9 @@ export class Room {
     this.snapshotInterval = setInterval(
       () => {
         if (this.dirtySinceLastSnapshot) {
-          this.createSnapshot().catch(console.error);
+          this.createSnapshot().catch((err) => {
+            this.logger.error(`Automatic snapshot failed for board ${this.boardId}`, err);
+          });
         }
       },
       5 * 60 * 1000,
@@ -130,43 +136,47 @@ export class Room {
     const meta = this.clients.get(ws);
     if (!meta) return;
 
-    const decoder = decoding.createDecoder(data);
-    const messageType = decoding.readVarUint(decoder);
+    try {
+      const decoder = decoding.createDecoder(data);
+      const messageType = decoding.readVarUint(decoder);
 
-    if (messageType === MSG.SYNC) {
-      const encoder = encoding.createEncoder();
-      encoding.writeVarUint(encoder, MSG.SYNC);
+      if (messageType === MSG.SYNC) {
+        const encoder = encoding.createEncoder();
+        encoding.writeVarUint(encoder, MSG.SYNC);
 
-      const syncMessageType = decoding.readVarUint(decoder);
-      decoder.pos--;
+        const syncMessageType = decoding.readVarUint(decoder);
+        decoder.pos--;
 
-      if (syncMessageType === syncProtocol.messageYjsSyncStep1) {
-        syncProtocol.readSyncMessage(decoder, encoder, this.doc, ws);
-        if (encoding.length(encoder) > 1) {
-          ws.send(encoding.toUint8Array(encoder));
+        if (syncMessageType === syncProtocol.messageYjsSyncStep1) {
+          syncProtocol.readSyncMessage(decoder, encoder, this.doc, ws);
+          if (encoding.length(encoder) > 1) {
+            ws.send(encoding.toUint8Array(encoder));
+          }
+        } else {
+          if (meta.role === 'VIEWER') {
+            return;
+          }
+
+          const roots = getDocRoots(this.doc);
+          if (roots.elements.size > LIMITS.MAX_ELEMENTS) {
+            ws.close(WS_CLOSE.FORBIDDEN, 'Element limit exceeded');
+            return;
+          }
+
+          syncProtocol.readSyncMessage(decoder, encoder, this.doc, ws);
+          if (encoding.length(encoder) > 1) {
+            ws.send(encoding.toUint8Array(encoder));
+          }
         }
-      } else {
-        if (meta.role === 'VIEWER') {
-          return;
-        }
-
-        const roots = getDocRoots(this.doc);
-        if (roots.elements.size > LIMITS.MAX_ELEMENTS) {
-          ws.close(WS_CLOSE.FORBIDDEN, 'Element limit exceeded');
-          return;
-        }
-
-        syncProtocol.readSyncMessage(decoder, encoder, this.doc, ws);
-        if (encoding.length(encoder) > 1) {
-          ws.send(encoding.toUint8Array(encoder));
-        }
+      } else if (messageType === MSG.AWARENESS) {
+        awarenessProtocol.applyAwarenessUpdate(
+          this.awareness,
+          decoding.readVarUint8Array(decoder),
+          ws,
+        );
       }
-    } else if (messageType === MSG.AWARENESS) {
-      awarenessProtocol.applyAwarenessUpdate(
-        this.awareness,
-        decoding.readVarUint8Array(decoder),
-        ws,
-      );
+    } catch (err) {
+      this.logger.warn(`Failed to process message from client in room ${this.boardId}`, err);
     }
   }
 

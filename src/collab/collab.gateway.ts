@@ -4,6 +4,7 @@ import {
   WebSocketGateway,
   WebSocketServer,
 } from '@nestjs/websockets';
+import { Logger, OnModuleDestroy } from '@nestjs/common';
 import { IncomingMessage } from 'node:http';
 import { WebSocket, Server } from 'ws';
 import { ConfigService } from '@nestjs/config';
@@ -11,7 +12,6 @@ import { WsAuthService } from './ws-auth.service';
 import { RoomManagerService } from './room-manager.service';
 import { WS_CLOSE, LIMITS } from '../shared';
 import { Env } from '../config/env';
-
 import { MetricsService } from '../metrics/metrics.service';
 
 interface ClientSocketContext {
@@ -21,11 +21,13 @@ interface ClientSocketContext {
 }
 
 @WebSocketGateway()
-export class CollabGateway implements OnGatewayConnection, OnGatewayDisconnect {
+export class CollabGateway implements OnGatewayConnection, OnGatewayDisconnect, OnModuleDestroy {
   @WebSocketServer()
   server!: Server;
 
+  private readonly logger = new Logger(CollabGateway.name);
   private socketContexts = new Map<WebSocket, ClientSocketContext>();
+  private userConnectionCounts = new Map<string, number>();
   private heartbeatInterval: NodeJS.Timeout | null = null;
 
   constructor(
@@ -44,6 +46,13 @@ export class CollabGateway implements OnGatewayConnection, OnGatewayDisconnect {
         ws.ping();
       }
     }, LIMITS.PING_INTERVAL_MS);
+  }
+
+  onModuleDestroy() {
+    if (this.heartbeatInterval) {
+      clearInterval(this.heartbeatInterval);
+      this.heartbeatInterval = null;
+    }
   }
 
   async handleConnection(client: WebSocket, req: IncomingMessage) {
@@ -67,15 +76,13 @@ export class CollabGateway implements OnGatewayConnection, OnGatewayDisconnect {
       return;
     }
 
-    let userConns = 0;
-    for (const [, ctx] of this.socketContexts) {
-      if (ctx.userId === payload.userId) userConns++;
-    }
-    if (userConns >= LIMITS.MAX_CONNECTIONS_PER_USER) {
+    const currentConns = this.userConnectionCounts.get(payload.userId) || 0;
+    if (currentConns >= LIMITS.MAX_CONNECTIONS_PER_USER) {
       client.close(WS_CLOSE.RATE_LIMITED, 'Too many connections for user');
       return;
     }
 
+    this.userConnectionCounts.set(payload.userId, currentConns + 1);
     this.socketContexts.set(client, {
       userId: payload.userId,
       boardId: payload.boardId,
@@ -90,8 +97,16 @@ export class CollabGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
     const room = await this.roomManager.getOrLoadRoom(payload.boardId);
 
+    if (client.readyState !== WebSocket.OPEN) {
+      this.decrementUserConnection(payload.userId);
+      this.socketContexts.delete(client);
+      this.metrics.setActiveConnections(this.socketContexts.size);
+      return;
+    }
+
     if (room.clients.size >= LIMITS.MAX_PARTICIPANTS_PER_BOARD) {
       client.close(WS_CLOSE.RATE_LIMITED, 'Room capacity exceeded');
+      this.decrementUserConnection(payload.userId);
       this.socketContexts.delete(client);
       this.metrics.setActiveConnections(this.socketContexts.size);
       return;
@@ -113,9 +128,19 @@ export class CollabGateway implements OnGatewayConnection, OnGatewayDisconnect {
     });
   }
 
+  private decrementUserConnection(userId: string) {
+    const current = this.userConnectionCounts.get(userId) || 1;
+    if (current <= 1) {
+      this.userConnectionCounts.delete(userId);
+    } else {
+      this.userConnectionCounts.set(userId, current - 1);
+    }
+  }
+
   handleDisconnect(client: WebSocket) {
     const ctx = this.socketContexts.get(client);
     if (ctx) {
+      this.decrementUserConnection(ctx.userId);
       this.socketContexts.delete(client);
       this.metrics.setActiveConnections(this.socketContexts.size);
       this.roomManager.getOrLoadRoom(ctx.boardId).then((room) => {
