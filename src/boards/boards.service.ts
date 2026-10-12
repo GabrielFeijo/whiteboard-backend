@@ -13,6 +13,7 @@ import { Role } from '../shared';
 import { CreateBoardDto } from './dto/create-board.dto';
 import { UpdateBoardDto } from './dto/update-board.dto';
 import { CreateLinkDto } from './dto/create-link.dto';
+import { AddMemberDto } from './dto/add-member.dto';
 
 @Injectable()
 export class BoardsService {
@@ -120,15 +121,7 @@ export class BoardsService {
       }
     }
 
-    if (!userRole) {
-      if (!token) {
-        if (userId) {
-          throw new ForbiddenException('Access denied to board');
-        } else {
-          throw new UnauthorizedException('Authentication or share link required');
-        }
-      }
-
+    if (token) {
       const tokenHash = this.hashToken(token);
       const link = await this.prisma.shareLink.findUnique({
         where: { tokenHash },
@@ -142,9 +135,11 @@ export class BoardsService {
         throw new ForbiddenException('Share link has expired');
       }
 
-      userRole = link.role;
+      if (!userRole || (userRole === 'VIEWER' && link.role === 'EDITOR')) {
+        userRole = link.role;
+      }
 
-      if (userId) {
+      if (userId && board.ownerId !== userId) {
         await this.prisma.boardMember.upsert({
           where: {
             boardId_userId: { boardId, userId },
@@ -152,12 +147,18 @@ export class BoardsService {
           create: {
             boardId,
             userId,
-            role: link.role,
+            role: userRole,
           },
           update: {
-            role: link.role,
+            role: userRole,
           },
         });
+      }
+    } else if (!userRole) {
+      if (userId) {
+        throw new ForbiddenException('Access denied to board');
+      } else {
+        throw new UnauthorizedException('Authentication or share link required');
       }
     }
 
@@ -327,7 +328,7 @@ export class BoardsService {
       }
     }
 
-    if ((!user || resolvedRole === 'VIEWER') && linkToken) {
+    if (linkToken) {
       const tokenHash = this.hashToken(linkToken);
       const link = await this.prisma.shareLink.findUnique({
         where: { tokenHash },
@@ -341,7 +342,12 @@ export class BoardsService {
         throw new ForbiddenException('Share link has expired');
       }
 
-      resolvedRole = link.role;
+      if (!user || resolvedRole === 'VIEWER' || link.role === 'EDITOR') {
+        if (resolvedRole !== 'OWNER') {
+          resolvedRole = link.role;
+        }
+      }
+
       if (!user) {
         resolvedUserId = `guest_${nanoid(8)}`;
         resolvedName = `Guest ${resolvedUserId.slice(-4)}`;
@@ -458,5 +464,68 @@ export class BoardsService {
       restoredFromVersion: targetSnapshot.version,
       createdAt: restoredRecord.createdAt,
     };
+  }
+
+  async addMember(boardId: string, userId: string, dto: AddMemberDto) {
+    const board = await this.findOne(boardId, userId);
+    if (board.ownerId !== userId && board.currentUserRole !== 'OWNER') {
+      throw new ForbiddenException('Only owner can add members directly');
+    }
+
+    const email = dto.email.toLowerCase().trim();
+    const targetUser = await this.prisma.user.findUnique({
+      where: { email },
+    });
+
+    if (!targetUser) {
+      throw new NotFoundException('User not found with this email');
+    }
+
+    if (targetUser.id === board.ownerId) {
+      throw new BadRequestException('User is already the board owner');
+    }
+
+    return this.prisma.boardMember.upsert({
+      where: {
+        boardId_userId: { boardId, userId: targetUser.id },
+      },
+      create: {
+        boardId,
+        userId: targetUser.id,
+        role: dto.role,
+      },
+      update: {
+        role: dto.role,
+      },
+      include: {
+        user: { select: { id: true, name: true, email: true, avatarUrl: true } },
+      },
+    });
+  }
+
+  async listMembers(boardId: string, userId: string) {
+    await this.findOne(boardId, userId);
+    return this.prisma.boardMember.findMany({
+      where: { boardId },
+      include: {
+        user: { select: { id: true, name: true, email: true, avatarUrl: true } },
+      },
+      orderBy: { role: 'asc' },
+    });
+  }
+
+  async removeMember(boardId: string, memberUserId: string, userId: string) {
+    const board = await this.findOne(boardId, userId);
+    if (board.ownerId !== userId && board.currentUserRole !== 'OWNER') {
+      throw new ForbiddenException('Only owner can remove members');
+    }
+    if (memberUserId === board.ownerId) {
+      throw new BadRequestException('Cannot remove board owner');
+    }
+    return this.prisma.boardMember.delete({
+      where: {
+        boardId_userId: { boardId, userId: memberUserId },
+      },
+    });
   }
 }

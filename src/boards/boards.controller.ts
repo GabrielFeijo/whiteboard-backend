@@ -20,6 +20,7 @@ import { BoardsService } from './boards.service';
 import { CreateBoardDto } from './dto/create-board.dto';
 import { UpdateBoardDto } from './dto/update-board.dto';
 import { CreateLinkDto } from './dto/create-link.dto';
+import { AddMemberDto } from './dto/add-member.dto';
 import { WsTicketDto } from './dto/ws-ticket.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
@@ -136,6 +137,38 @@ export class BoardsController {
     @CurrentUser('id') userId: string,
   ) {
     return this.boardsService.revokeShareLink(id, linkId, userId);
+  }
+
+  @Post(':id/members')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Add or invite a member to the board by email' })
+  async addMember(
+    @Param('id') id: string,
+    @CurrentUser('id') userId: string,
+    @Body() dto: AddMemberDto,
+  ) {
+    return this.boardsService.addMember(id, userId, dto);
+  }
+
+  @Get(':id/members')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'List all members of the board' })
+  async listMembers(@Param('id') id: string, @CurrentUser('id') userId: string) {
+    return this.boardsService.listMembers(id, userId);
+  }
+
+  @Delete(':id/members/:memberUserId')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Remove a member from the board' })
+  async removeMember(
+    @Param('id') id: string,
+    @Param('memberUserId') memberUserId: string,
+    @CurrentUser('id') userId: string,
+  ) {
+    return this.boardsService.removeMember(id, memberUserId, userId);
   }
 
   @Post(':id/ws-ticket')

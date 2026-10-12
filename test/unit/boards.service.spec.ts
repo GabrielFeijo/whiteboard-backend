@@ -19,6 +19,11 @@ describe('BoardsService', () => {
       boardMember: {
         create: vi.fn(),
         upsert: vi.fn().mockResolvedValue({}),
+        findMany: vi.fn(),
+        delete: vi.fn(),
+      },
+      user: {
+        findUnique: vi.fn(),
       },
       shareLink: {
         create: vi.fn(),
@@ -158,5 +163,65 @@ describe('BoardsService', () => {
     });
 
     await expect(service.findOne('b1')).rejects.toThrow(UnauthorizedException);
+  });
+
+  it('adds a member directly by email when requested by owner', async () => {
+    mockPrisma.board.findFirst.mockResolvedValue({
+      id: 'b1',
+      ownerId: 'u1',
+      members: [{ userId: 'u1', role: 'OWNER' }],
+    });
+    mockPrisma.user.findUnique.mockResolvedValue({
+      id: 'u2',
+      email: 'u2@example.com',
+      name: 'User 2',
+    });
+    mockPrisma.boardMember.upsert.mockResolvedValue({
+      boardId: 'b1',
+      userId: 'u2',
+      role: 'EDITOR',
+      user: { id: 'u2', name: 'User 2', email: 'u2@example.com' },
+    });
+
+    const res = await service.addMember('b1', 'u1', { email: 'u2@example.com', role: 'EDITOR' });
+    expect(res.userId).toBe('u2');
+    expect(res.role).toBe('EDITOR');
+    expect(mockPrisma.boardMember.upsert).toHaveBeenCalledWith({
+      where: { boardId_userId: { boardId: 'b1', userId: 'u2' } },
+      create: { boardId: 'b1', userId: 'u2', role: 'EDITOR' },
+      update: { role: 'EDITOR' },
+      include: {
+        user: { select: { id: true, name: true, email: true, avatarUrl: true } },
+      },
+    });
+  });
+
+  it('lists members of the board', async () => {
+    mockPrisma.board.findFirst.mockResolvedValue({
+      id: 'b1',
+      ownerId: 'u1',
+      members: [{ userId: 'u1', role: 'OWNER' }],
+    });
+    mockPrisma.boardMember.findMany.mockResolvedValue([
+      { boardId: 'b1', userId: 'u1', role: 'OWNER' },
+      { boardId: 'b1', userId: 'u2', role: 'EDITOR' },
+    ]);
+
+    const res = await service.listMembers('b1', 'u1');
+    expect(res).toHaveLength(2);
+  });
+
+  it('removes a member when requested by owner', async () => {
+    mockPrisma.board.findFirst.mockResolvedValue({
+      id: 'b1',
+      ownerId: 'u1',
+      members: [{ userId: 'u1', role: 'OWNER' }],
+    });
+    mockPrisma.boardMember.delete.mockResolvedValue({});
+
+    await service.removeMember('b1', 'u2', 'u1');
+    expect(mockPrisma.boardMember.delete).toHaveBeenCalledWith({
+      where: { boardId_userId: { boardId: 'b1', userId: 'u2' } },
+    });
   });
 });
