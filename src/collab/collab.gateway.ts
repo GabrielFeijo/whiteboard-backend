@@ -4,7 +4,7 @@ import {
   WebSocketGateway,
   WebSocketServer,
 } from '@nestjs/websockets';
-import { Logger, OnModuleDestroy } from '@nestjs/common';
+import { OnModuleDestroy } from '@nestjs/common';
 import { IncomingMessage } from 'node:http';
 import { WebSocket, Server } from 'ws';
 import { ConfigService } from '@nestjs/config';
@@ -25,7 +25,6 @@ export class CollabGateway implements OnGatewayConnection, OnGatewayDisconnect, 
   @WebSocketServer()
   server!: Server;
 
-  private readonly logger = new Logger(CollabGateway.name);
   private socketContexts = new Map<WebSocket, ClientSocketContext>();
   private userConnectionCounts = new Map<string, number>();
   private heartbeatInterval: NodeJS.Timeout | null = null;
