@@ -254,7 +254,6 @@ describe('Collab Server Stateful & WebSocket Pipeline Integration', () => {
         ws.on('error', reject);
       });
 
-      // Simulate Redis ACL publish event
       const aclPayload = JSON.stringify({ type: 'REVOKE_LINK', linkId: 'link-to-revoke-1' });
       for (const cb of messageListeners) {
         cb('board:board-acl-test:acl', aclPayload);

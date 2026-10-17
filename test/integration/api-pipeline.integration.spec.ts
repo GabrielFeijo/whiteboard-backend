@@ -24,7 +24,6 @@ describe('API REST End-to-End Pipeline Integration', () => {
   let app: NestExpressApplication;
   let baseUrl: string;
 
-  // In-memory data stores for integration test simulation
   const users = new Map<
     string,
     {
@@ -494,10 +493,30 @@ describe('API REST End-to-End Pipeline Integration', () => {
     await app.close();
   });
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const readJson = async (res: Response): Promise<Record<string, any>> => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    return (await res.json()) as Record<string, any>;
+  interface ApiResponsePayload {
+    id: string;
+    title: string;
+    status: string | number;
+    statusCode: number;
+    detail: string;
+    requestId: string;
+    accessToken: string;
+    refreshToken: string;
+    role: string;
+    token: string;
+    ticket: string;
+    boardId: string;
+    ownerId: string;
+    deletedAt: Date | string | null;
+    email: string;
+    name: string;
+    items: Array<{ id: string; role: string }>;
+    user: { email: string; name?: string };
+    info: { postgres: { status: string }; redis: { status: string } };
+  }
+
+  const readJson = async (res: Response): Promise<ApiResponsePayload> => {
+    return (await res.json()) as ApiResponsePayload;
   };
 
   describe('Security Headers, Correlation ID & Observability', () => {
@@ -634,7 +653,6 @@ describe('API REST End-to-End Pipeline Integration', () => {
     let shareToken: string;
 
     beforeAll(async () => {
-      // Register Alice
       const aRes = await fetch(`${baseUrl}/v1/auth/register`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -647,7 +665,6 @@ describe('API REST End-to-End Pipeline Integration', () => {
       const aBody = await readJson(aRes);
       aliceToken = aBody.accessToken;
 
-      // Register Bob
       const bRes = await fetch(`${baseUrl}/v1/auth/register`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

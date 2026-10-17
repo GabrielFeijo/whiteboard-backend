@@ -115,7 +115,6 @@ async function main(): Promise<void> {
   const defaultPassword = 'Password123!';
   const passwordHash = await argon2.hash(defaultPassword, { type: argon2.argon2id });
 
-  // 1. Seed Demo Users
   const alice = await prisma.user.upsert({
     where: { email: 'owner@whiteboard.local' },
     update: { name: 'Alice Owner', passwordHash, deletedAt: null },
@@ -152,7 +151,6 @@ async function main(): Promise<void> {
   console.log(`     - Charlie (Viewer): ${charlie.email}`);
   console.log(`     (Password for all: ${defaultPassword})`);
 
-  // 2. Seed Primary Architecture Board
   let archBoard = await prisma.board.findFirst({
     where: { title: 'Distributed System Architecture', ownerId: alice.id, deletedAt: null },
   });
@@ -166,7 +164,6 @@ async function main(): Promise<void> {
     });
   }
 
-  // Ensure Memberships
   await prisma.boardMember.upsert({
     where: { boardId_userId: { boardId: archBoard.id, userId: alice.id } },
     update: { role: Role.OWNER },
@@ -185,7 +182,6 @@ async function main(): Promise<void> {
     create: { boardId: archBoard.id, userId: charlie.id, role: Role.VIEWER },
   });
 
-  // Seed Snapshot with CRDT document if none exists
   const existingSnapshot = await prisma.snapshot.findFirst({
     where: { boardId: archBoard.id },
   });
@@ -202,7 +198,6 @@ async function main(): Promise<void> {
     });
   }
 
-  // Seed Share Links
   const editorShareToken = 'seed-editor-token-shared-access';
   const viewerShareToken = 'seed-viewer-token-public-readonly';
 
@@ -226,7 +221,6 @@ async function main(): Promise<void> {
     },
   });
 
-  // 3. Seed Secondary Sprint Board
   let sprintBoard = await prisma.board.findFirst({
     where: { title: 'Sprint Planning & Backlog', ownerId: bob.id, deletedAt: null },
   });
