@@ -1,20 +1,28 @@
 import 'reflect-metadata';
-import { NestFactory } from '@nestjs/core';
-import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
-import { ConfigService } from '@nestjs/config';
 import { Logger, ValidationPipe } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { NestFactory } from '@nestjs/core';
+import { NestExpressApplication } from '@nestjs/platform-express';
+import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import cookieParser from 'cookie-parser';
 import { AppModule } from './app.module';
-import { Env } from './config/env';
+import { Env } from './core/config/env';
 
-async function bootstrap() {
+async function bootstrap(): Promise<void> {
   const logger = new Logger('Bootstrap');
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create<NestExpressApplication>(AppModule);
   const config = app.get<ConfigService<Env, true>>(ConfigService);
 
+  app.disable('x-powered-by');
   app.use(cookieParser());
-  app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
-  app.setGlobalPrefix('v1', { exclude: ['health/(.*)', 'health'] });
+  app.useGlobalPipes(
+    new ValidationPipe({
+      whitelist: true,
+      transform: true,
+      transformOptions: { enableImplicitConversion: false },
+    }),
+  );
+  app.setGlobalPrefix('v1', { exclude: ['health/(.*)', 'health', 'metrics'] });
 
   app.enableShutdownHooks();
   app.enableCors({
@@ -22,20 +30,22 @@ async function bootstrap() {
     credentials: true,
   });
 
-  const doc = SwaggerModule.createDocument(
-    app,
-    new DocumentBuilder()
-      .setTitle('Whiteboard API')
-      .setDescription('REST API for Real-Time Collaborative Whiteboard')
-      .setVersion('1.0')
-      .addBearerAuth()
-      .build(),
-  );
-  SwaggerModule.setup('v1/docs', app, doc, { jsonDocumentUrl: 'v1/docs-json' });
+  if (config.get('NODE_ENV', { infer: true }) !== 'production') {
+    const doc = SwaggerModule.createDocument(
+      app,
+      new DocumentBuilder()
+        .setTitle('Whiteboard API')
+        .setDescription('REST API for Real-Time Collaborative Whiteboard')
+        .setVersion('1.0')
+        .addBearerAuth()
+        .build(),
+    );
+    SwaggerModule.setup('v1/docs', app, doc, { jsonDocumentUrl: 'v1/docs-json' });
+  }
 
   const port = config.get('API_PORT', { infer: true });
   await app.listen(port, '0.0.0.0');
   logger.log(`API listening on :${port}`);
 }
 
-bootstrap();
+void bootstrap();

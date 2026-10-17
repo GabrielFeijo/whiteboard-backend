@@ -1,12 +1,12 @@
 import 'reflect-metadata';
-import { NestFactory } from '@nestjs/core';
 import { Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { NestFactory } from '@nestjs/core';
 import { WsAdapter } from '@nestjs/platform-ws';
 import { CollabModule } from './collab.module';
-import { Env } from './config/env';
+import { Env } from './core/config/env';
 
-async function bootstrap() {
+async function bootstrap(): Promise<void> {
   const logger = new Logger('BootstrapCollab');
   const app = await NestFactory.create(CollabModule);
   const config = app.get<ConfigService<Env, true>>(ConfigService);
@@ -19,4 +19,4 @@ async function bootstrap() {
   logger.log(`Collab server listening on :${port}`);
 }
 
-bootstrap();
+void bootstrap();
