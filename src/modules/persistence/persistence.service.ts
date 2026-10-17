@@ -1,29 +1,32 @@
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
-import { PrismaService } from '../prisma/prisma.service';
+import { PrismaService } from '../../core/database/prisma.service';
 
 @Injectable()
 export class PersistenceService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(PersistenceService.name);
-  private buffer = new Map<string, Uint8Array[]>();
+  private readonly buffer = new Map<string, Uint8Array[]>();
   private flushTimer: NodeJS.Timeout | null = null;
   private isFlushing = false;
 
   constructor(private readonly prisma: PrismaService) {}
 
-  onModuleInit() {
+  onModuleInit(): void {
     this.flushTimer = setInterval(() => {
-      this.flushAll().catch((err) => {
+      this.flushAll().catch((err: unknown) => {
         this.logger.error('Scheduled flushAll failed', err);
       });
     }, 500);
   }
 
-  async onModuleDestroy() {
-    if (this.flushTimer) clearInterval(this.flushTimer);
+  async onModuleDestroy(): Promise<void> {
+    if (this.flushTimer) {
+      clearInterval(this.flushTimer);
+      this.flushTimer = null;
+    }
     await this.flushAll();
   }
 
-  queueUpdate(boardId: string, update: Uint8Array) {
+  queueUpdate(boardId: string, update: Uint8Array): void {
     let list = this.buffer.get(boardId);
     if (!list) {
       list = [];
@@ -32,13 +35,13 @@ export class PersistenceService implements OnModuleInit, OnModuleDestroy {
     list.push(update);
 
     if (list.length >= 50) {
-      this.flushBoard(boardId).catch((err) => {
+      this.flushBoard(boardId).catch((err: unknown) => {
         this.logger.error(`Immediate buffer flush failed for board ${boardId}`, err);
       });
     }
   }
 
-  private async flushBoard(boardId: string) {
+  async flushBoard(boardId: string): Promise<void> {
     const updates = this.buffer.get(boardId);
     if (!updates || updates.length === 0) return;
     this.buffer.delete(boardId);
@@ -48,10 +51,16 @@ export class PersistenceService implements OnModuleInit, OnModuleDestroy {
       data: Buffer.from(u),
     }));
 
-    await this.prisma.docUpdate.createMany({ data });
+    try {
+      await this.prisma.docUpdate.createMany({ data });
+    } catch (err) {
+      const concurrent = this.buffer.get(boardId) ?? [];
+      this.buffer.set(boardId, [...updates, ...concurrent]);
+      throw err;
+    }
   }
 
-  async flushAll() {
+  async flushAll(): Promise<void> {
     if (this.isFlushing) return;
     this.isFlushing = true;
     try {
@@ -65,28 +74,38 @@ export class PersistenceService implements OnModuleInit, OnModuleDestroy {
   async saveSnapshot(boardId: string, snapshotBytes: Uint8Array, reason = 'AUTO'): Promise<void> {
     await this.flushBoard(boardId);
 
-    const latest = await this.prisma.snapshot.findFirst({
-      where: { boardId },
-      orderBy: { version: 'desc' },
-      select: { version: true },
-    });
-    const version = (latest?.version ?? 0) + 1;
+    const executeSave = async (client: PrismaService): Promise<void> => {
+      const latest = await client.snapshot.findFirst({
+        where: { boardId },
+        orderBy: { version: 'desc' },
+        select: { version: true },
+      });
+      const version = (latest?.version ?? 0) + 1;
 
-    const snap = await this.prisma.snapshot.create({
-      data: {
-        boardId,
-        data: Buffer.from(snapshotBytes),
-        version,
-        reason,
-      },
-    });
+      const snap = await client.snapshot.create({
+        data: {
+          boardId,
+          data: Buffer.from(snapshotBytes),
+          version,
+          reason,
+        },
+      });
 
-    await this.prisma.docUpdate.deleteMany({
-      where: {
-        boardId,
-        createdAt: { lte: snap.createdAt },
-      },
-    });
+      await client.docUpdate.deleteMany({
+        where: {
+          boardId,
+          createdAt: { lte: snap.createdAt },
+        },
+      });
+    };
+
+    if (typeof this.prisma.$transaction === 'function') {
+      await this.prisma.$transaction(async (tx) => {
+        await executeSave(tx as unknown as PrismaService);
+      });
+    } else {
+      await executeSave(this.prisma);
+    }
   }
 
   async loadInitialState(

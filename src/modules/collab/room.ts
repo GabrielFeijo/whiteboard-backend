@@ -1,18 +1,21 @@
 import { Logger } from '@nestjs/common';
-import * as Y from 'yjs';
-import * as syncProtocol from 'y-protocols/sync';
-import * as awarenessProtocol from 'y-protocols/awareness';
-import * as encoding from 'lib0/encoding';
 import * as decoding from 'lib0/decoding';
+import * as encoding from 'lib0/encoding';
 import { WebSocket } from 'ws';
-import { MSG, Role, WS_CLOSE, getDocRoots, LIMITS } from '../shared';
+import * as awarenessProtocol from 'y-protocols/awareness';
+import * as syncProtocol from 'y-protocols/sync';
+import * as Y from 'yjs';
+import { redisChannels } from '../../core/redis/redis-keys';
+import { RedisService } from '../../core/redis/redis.service';
+import { getDocRoots, LIMITS, MSG, Role, WS_CLOSE } from '../../shared';
 import { PersistenceService } from '../persistence/persistence.service';
-import { RedisService } from '../redis/redis.service';
+import { YjsValidatorService } from './services/yjs-validator.service';
 
 export interface ClientMeta {
   userId: string;
   userName: string;
   role: Role;
+  linkId?: string;
 }
 
 export class Room {
@@ -28,12 +31,15 @@ export class Room {
   ) => void;
   private snapshotInterval: NodeJS.Timeout | null = null;
   private dirtySinceLastSnapshot = false;
+  private readonly validator: YjsValidatorService;
 
   constructor(
     readonly boardId: string,
     private readonly persistence: PersistenceService,
     private readonly redis: RedisService,
+    validator?: YjsValidatorService,
   ) {
+    this.validator = validator ?? new YjsValidatorService();
     this.doc = new Y.Doc();
     this.doc.gc = true;
     this.awareness = new awarenessProtocol.Awareness(this.doc);
@@ -53,8 +59,8 @@ export class Room {
 
       if (origin !== 'redis') {
         this.redis.client
-          .publish(`board:${this.boardId}:updates`, Buffer.from(update).toString('base64'))
-          .catch((err) => {
+          .publish(redisChannels.updates(this.boardId), Buffer.from(update).toString('base64'))
+          .catch((err: unknown) => {
             this.logger.error(`Redis publish update failed for board ${this.boardId}`, err);
           });
 
@@ -96,7 +102,7 @@ export class Room {
     this.snapshotInterval = setInterval(
       () => {
         if (this.dirtySinceLastSnapshot) {
-          this.createSnapshot().catch((err) => {
+          this.createSnapshot().catch((err: unknown) => {
             this.logger.error(`Automatic snapshot failed for board ${this.boardId}`, err);
           });
         }
@@ -105,13 +111,13 @@ export class Room {
     );
   }
 
-  async createSnapshot() {
+  async createSnapshot(): Promise<void> {
     this.dirtySinceLastSnapshot = false;
     const bytes = Y.encodeStateAsUpdate(this.doc);
     await this.persistence.saveSnapshot(this.boardId, bytes, 'AUTO');
   }
 
-  attach(ws: WebSocket, meta: ClientMeta) {
+  attach(ws: WebSocket, meta: ClientMeta): void {
     this.clients.set(ws, meta);
     this.clientIdsBySocket.set(ws, new Set());
 
@@ -132,7 +138,15 @@ export class Room {
     }
   }
 
-  handleMessage(ws: WebSocket, data: Uint8Array) {
+  private sendAuthoritativeStateToClient(ws: WebSocket): void {
+    if (ws.readyState !== WebSocket.OPEN) return;
+    const encoder = encoding.createEncoder();
+    encoding.writeVarUint(encoder, MSG.SYNC);
+    syncProtocol.writeUpdate(encoder, Y.encodeStateAsUpdate(this.doc));
+    ws.send(encoding.toUint8Array(encoder));
+  }
+
+  handleMessage(ws: WebSocket, data: Uint8Array): void {
     const meta = this.clients.get(ws);
     if (!meta) return;
 
@@ -144,8 +158,9 @@ export class Room {
         const encoder = encoding.createEncoder();
         encoding.writeVarUint(encoder, MSG.SYNC);
 
+        const syncPayloadOffset = decoder.pos;
         const syncMessageType = decoding.readVarUint(decoder);
-        decoder.pos--;
+        decoder.pos = syncPayloadOffset;
 
         if (syncMessageType === syncProtocol.messageYjsSyncStep1) {
           syncProtocol.readSyncMessage(decoder, encoder, this.doc, ws);
@@ -160,6 +175,25 @@ export class Room {
           const roots = getDocRoots(this.doc);
           if (roots.elements.size > LIMITS.MAX_ELEMENTS) {
             ws.close(WS_CLOSE.FORBIDDEN, 'Element limit exceeded');
+            return;
+          }
+
+          const syncPayloadSlice = data.subarray(syncPayloadOffset);
+          const validation = this.validator.validateSyncUpdate(
+            this.doc,
+            syncPayloadSlice,
+            meta.role,
+          );
+
+          if (!validation.valid) {
+            if (validation.reason === 'ELEMENT_QUOTA_EXCEEDED') {
+              ws.close(WS_CLOSE.FORBIDDEN, 'Element limit exceeded');
+              return;
+            }
+            this.logger.warn(
+              `Rejected invalid Yjs update (${validation.reason}) from user ${meta.userId} in board ${this.boardId}`,
+            );
+            this.sendAuthoritativeStateToClient(ws);
             return;
           }
 
@@ -180,15 +214,24 @@ export class Room {
     }
   }
 
-  detach(ws: WebSocket) {
+  revokeClientAccess(filter: { userId?: string; linkId?: string }): void {
+    for (const [ws, meta] of this.clients.entries()) {
+      const matchesUser = Boolean(filter.userId && meta.userId === filter.userId);
+      const matchesLink = Boolean(filter.linkId && meta.linkId === filter.linkId);
+      if (matchesUser || matchesLink) {
+        if (typeof ws.close === 'function') {
+          ws.close(WS_CLOSE.FORBIDDEN, 'Access revoked');
+        }
+        this.detach(ws);
+      }
+    }
+  }
+
+  detach(ws: WebSocket): void {
     this.clients.delete(ws);
     const clientIds = this.clientIdsBySocket.get(ws);
     if (clientIds && clientIds.size > 0) {
-      awarenessProtocol.removeAwarenessStates(
-        this.awareness,
-        Array.from(clientIds),
-        null,
-      );
+      awarenessProtocol.removeAwarenessStates(this.awareness, Array.from(clientIds), null);
     }
     this.clientIdsBySocket.delete(ws);
     if (this.clients.size === 0) {
@@ -199,12 +242,12 @@ export class Room {
     }
   }
 
-  applyRemoteRedisUpdate(updateBase64: string) {
+  applyRemoteRedisUpdate(updateBase64: string): void {
     const update = new Uint8Array(Buffer.from(updateBase64, 'base64'));
     Y.applyUpdate(this.doc, update, 'redis');
   }
 
-  restoreSnapshot(snapshotData: Uint8Array) {
+  restoreSnapshot(snapshotData: Uint8Array): void {
     this.doc.transact(() => {
       const roots = getDocRoots(this.doc);
       roots.elements.forEach((_val: unknown, key: string) => {
@@ -226,8 +269,11 @@ export class Room {
     }
   }
 
-  destroy() {
-    if (this.snapshotInterval) clearInterval(this.snapshotInterval);
+  destroy(): void {
+    if (this.snapshotInterval) {
+      clearInterval(this.snapshotInterval);
+      this.snapshotInterval = null;
+    }
     this.doc.off('update', this.updateHandler);
     this.awareness.off('update', this.awarenessHandler);
     this.doc.destroy();
