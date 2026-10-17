@@ -22,6 +22,9 @@ export const EnvSchema = z.object({
   JWT_ACCESS_SECRET: z.string().min(32, 'JWT_ACCESS_SECRET deve ter ao menos 32 caracteres'),
   JWT_ACCESS_TTL: z.coerce.number().int().positive().default(900),
   REFRESH_COOKIE_NAME: z.string().default('wb_refresh'),
+  REFRESH_TOKEN_TTL_DAYS: z.coerce.number().int().positive().default(7),
+  AUTH_LOCKOUT_TTL_SECONDS: z.coerce.number().int().positive().default(900),
+  AUTH_MAX_LOGIN_ATTEMPTS: z.coerce.number().int().positive().default(5),
   WS_TICKET_TTL: z.coerce.number().int().positive().default(30),
   ALLOWED_ORIGINS: csv('http://localhost:3000'),
 
