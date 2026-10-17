@@ -10,12 +10,7 @@ export default tseslint.config(
   {
     rules: {
       '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_' }],
-    },
-  },
-  {
-    files: ['test/**/*.ts'],
-    rules: {
-      '@typescript-eslint/no-explicit-any': 'off',
+      '@typescript-eslint/no-explicit-any': 'error',
     },
   },
 );

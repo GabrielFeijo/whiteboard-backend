@@ -17,6 +17,7 @@
     "strict": true,
     "strictPropertyInitialization": false,
     "noImplicitOverride": true,
+    "noImplicitReturns": true,
     "noFallthroughCasesInSwitch": true,
     "forceConsistentCasingInFileNames": true,
     "resolveJsonModule": true
