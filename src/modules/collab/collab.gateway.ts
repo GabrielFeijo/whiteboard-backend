@@ -106,18 +106,20 @@ export class CollabGateway
 
     const room = await this.roomManager.getOrLoadRoom(payload.boardId);
 
-    if (client.readyState !== WebSocket.OPEN) {
-      this.decrementUserConnection(payload.userId);
-      this.socketContexts.delete(client);
-      this.metrics.setActiveConnections(this.socketContexts.size);
+    if (!this.socketContexts.has(client) || client.readyState !== WebSocket.OPEN) {
+      if (this.socketContexts.has(client)) {
+        this.decrementUserConnection(payload.userId);
+        this.socketContexts.delete(client);
+        this.metrics.setActiveConnections(this.socketContexts.size);
+      }
       return;
     }
 
     if (room.clients.size >= LIMITS.MAX_PARTICIPANTS_PER_BOARD) {
-      client.close(WS_CLOSE.RATE_LIMITED, 'Room capacity exceeded');
       this.decrementUserConnection(payload.userId);
       this.socketContexts.delete(client);
       this.metrics.setActiveConnections(this.socketContexts.size);
+      client.close(WS_CLOSE.RATE_LIMITED, 'Room capacity exceeded');
       return;
     }
 

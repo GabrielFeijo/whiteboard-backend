@@ -1,9 +1,6 @@
 import { ForbiddenException, Injectable } from '@nestjs/common';
 import { nanoid } from 'nanoid';
-import {
-  PresignedUploadResult,
-  S3StorageService,
-} from '../../core/storage/s3-storage.service';
+import { PresignedUploadResult, S3StorageService } from '../../core/storage/s3-storage.service';
 import { BoardAclService } from '../boards/services/board-acl.service';
 import { MIME_TO_EXTENSION, PresignAssetDto } from './dto/presign-asset.dto';
 

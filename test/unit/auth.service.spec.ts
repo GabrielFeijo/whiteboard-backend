@@ -184,7 +184,12 @@ describe('AuthService', () => {
       expiresAt: new Date(Date.now() + 60_000),
       usedAt: null,
       revokedAt: null,
-      user: { id: 'u1', email: 'deleted_u1@whiteboard.local', name: 'Deleted User', deletedAt: new Date() },
+      user: {
+        id: 'u1',
+        email: 'deleted_u1@whiteboard.local',
+        name: 'Deleted User',
+        deletedAt: new Date(),
+      },
     });
 
     await expect(service.refresh(rawToken)).rejects.toThrow('User account is deactivated');

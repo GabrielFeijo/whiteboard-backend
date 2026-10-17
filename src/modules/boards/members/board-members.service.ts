@@ -5,10 +5,7 @@ import { Role } from '../../../shared';
 import { UsersRepository } from '../../users/users.repository';
 import { AddMemberDto } from '../dto/add-member.dto';
 import { BoardAclService } from '../services/board-acl.service';
-import {
-  BoardMembersRepository,
-  BoardMemberWithUserRecord,
-} from './board-members.repository';
+import { BoardMembersRepository, BoardMemberWithUserRecord } from './board-members.repository';
 
 @Injectable()
 export class BoardMembersService {
@@ -38,11 +35,7 @@ export class BoardMembersService {
       throw new BadRequestException('User is already the board owner');
     }
 
-    return this.boardMembersRepository.upsertMemberWithUser(
-      boardId,
-      targetUser.id,
-      dto.role,
-    );
+    return this.boardMembersRepository.upsertMemberWithUser(boardId, targetUser.id, dto.role);
   }
 
   async listMembers(boardId: string, userId: string): Promise<BoardMemberWithUserRecord[]> {

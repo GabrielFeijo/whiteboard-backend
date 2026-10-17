@@ -55,11 +55,7 @@ export class BoardsService {
     };
   }
 
-  async findOne(
-    boardId: string,
-    userId?: string,
-    token?: string,
-  ): Promise<ResolvedBoardWithRole> {
+  async findOne(boardId: string, userId?: string, token?: string): Promise<ResolvedBoardWithRole> {
     return this.boardAclService.resolveBoardWithAccess(boardId, userId, token);
   }
 

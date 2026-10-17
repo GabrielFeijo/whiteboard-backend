@@ -190,7 +190,11 @@ backend/
 │
 ├── docker/
 │   └── Dockerfile                 # Dockerfile multi-stage (targets: api e collab)
-├── test/                          # Testes de integração com Testcontainers
+├── test/                          # Suítes de testes automatizados
+│   ├── contract/                  # Testes de contrato binário Yjs e fixtures
+│   ├── fixtures/                  # Fixtures binárias de updates e snapshots
+│   ├── integration/               # Testes de integração E2E HTTP & WebSocket loopback
+│   └── unit/                      # Testes unitários (serviços, guards, DTOs, filtros, gateways)
 ├── package.json
 └── tsconfig.json
 ```
@@ -258,14 +262,12 @@ npm run prisma:deploy       # Aplica migrações pendentes em produção
 npm run db:seed             # Executa o seed com dados de demonstração
 
 # Qualidade de Código & Testes
-npm run check               # Executa o Biome em modo verificação (linter + formatação)
-npm run check:fix           # Aplica correções seguras automaticamente com Biome
-npm run format:biome        # Formata os arquivos do projeto com Biome
 npm run lint                # Executa o linter ESLint em todo o projeto
 npm run format              # Formata arquivos com Prettier
-npm run typecheck           # Valida tipos com TypeScript compiler sem emitir JS
-npm run test                # Roda a suíte de testes unitários e de contrato com Vitest
-npm run test:int            # Roda os testes de integração com Testcontainers
+npm run typecheck           # Valida tipos com TypeScript compiler sem emitir JS (strict)
+npm run test                # Roda a suíte de testes unitários e de contrato com Vitest (65 testes)
+npm run test:int            # Roda os testes de integração HTTP e WS de ponta a ponta (23 testes)
+npm run test:all            # Executa a validação completa (unitários + integração, 88 testes)
 
 # Contrato
 npx tsx scripts/gen-fixtures.ts # Atualiza fixtures binárias do protocolo Yjs

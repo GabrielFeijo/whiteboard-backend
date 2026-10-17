@@ -2,10 +2,7 @@ import { CanActivate, ExecutionContext, Injectable } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { Env } from '../../core/config/env';
-import {
-  AuthenticatedRequest,
-  AuthenticatedUserSchema,
-} from '../types/express-request.interface';
+import { AuthenticatedRequest, AuthenticatedUserSchema } from '../types/express-request.interface';
 
 @Injectable()
 export class OptionalJwtAuthGuard implements CanActivate {

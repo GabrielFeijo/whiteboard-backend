@@ -9,14 +9,8 @@ import { BoardAclResolver } from '../../../common/guards/board-access.guard';
 import { BoardAccessContext } from '../../../common/types/express-request.interface';
 import { Role } from '../../../shared';
 import { BoardMembersRepository } from '../members/board-members.repository';
-import {
-  BoardDetailRecord,
-  BoardsRepository,
-} from '../repositories/boards.repository';
-import {
-  ShareLinkRecord,
-  ShareLinksRepository,
-} from '../share-links/share-links.repository';
+import { BoardDetailRecord, BoardsRepository } from '../repositories/boards.repository';
+import { ShareLinkRecord, ShareLinksRepository } from '../share-links/share-links.repository';
 
 export interface ResolvedBoardWithRole extends BoardDetailRecord {
   role: Role;
@@ -117,7 +111,11 @@ export class BoardAclService implements BoardAclResolver {
     };
   }
 
-  assertOwner(board: { ownerId: string; currentUserRole: Role }, userId: string, message: string): void {
+  assertOwner(
+    board: { ownerId: string; currentUserRole: Role },
+    userId: string,
+    message: string,
+  ): void {
     if (board.ownerId !== userId && board.currentUserRole !== 'OWNER') {
       throw new ForbiddenException(message);
     }

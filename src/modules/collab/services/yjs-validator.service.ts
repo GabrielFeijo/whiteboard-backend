@@ -3,18 +3,10 @@ import * as decoding from 'lib0/decoding';
 import * as encoding from 'lib0/encoding';
 import * as syncProtocol from 'y-protocols/sync';
 import * as Y from 'yjs';
-import {
-  ElementDataSchema,
-  getDocRoots,
-  LIMITS,
-  Role,
-} from '../../../shared';
+import { ElementDataSchema, getDocRoots, LIMITS, Role } from '../../../shared';
 
 export type SyncValidationFailureReason =
-  | 'VIEWER_READ_ONLY'
-  | 'META_FORBIDDEN'
-  | 'ELEMENT_QUOTA_EXCEEDED'
-  | 'INVALID_ELEMENT_SCHEMA';
+  'VIEWER_READ_ONLY' | 'META_FORBIDDEN' | 'ELEMENT_QUOTA_EXCEEDED' | 'INVALID_ELEMENT_SCHEMA';
 
 export interface SyncValidationResult {
   valid: boolean;

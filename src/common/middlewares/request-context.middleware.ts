@@ -10,8 +10,7 @@ export class RequestContextMiddleware implements NestMiddleware {
   use(req: AuthenticatedRequest, res: Response, next: NextFunction): void {
     const incomingHeader = req.headers['x-request-id'];
     const rawId = Array.isArray(incomingHeader) ? incomingHeader[0] : incomingHeader;
-    const requestId =
-      rawId && SAFE_REQUEST_ID_REGEX.test(rawId) ? rawId : crypto.randomUUID();
+    const requestId = rawId && SAFE_REQUEST_ID_REGEX.test(rawId) ? rawId : crypto.randomUUID();
 
     req.requestId = requestId;
     res.setHeader('X-Request-Id', requestId);

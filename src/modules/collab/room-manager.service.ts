@@ -46,6 +46,9 @@ export class RoomManagerService implements OnModuleInit, OnModuleDestroy {
 
   onModuleInit(): void {
     this.subscriberClient = this.redis.duplicate();
+    this.subscriberClient.on('error', (err: Error) => {
+      this.logger.error(`Redis subscriber client error: ${err.message}`, err.stack);
+    });
     this.subscriberClient.on('message', (channel: string, message: string) => {
       this.handleRedisMessage(channel, message);
     });

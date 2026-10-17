@@ -1,8 +1,5 @@
 import { createParamDecorator, ExecutionContext } from '@nestjs/common';
-import {
-  AuthenticatedRequest,
-  AuthenticatedUser,
-} from '../types/express-request.interface';
+import { AuthenticatedRequest, AuthenticatedUser } from '../types/express-request.interface';
 
 export type { AuthenticatedUser };
 

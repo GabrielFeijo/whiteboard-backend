@@ -33,12 +33,6 @@ import { BruteForceService } from './services/brute-force.service';
     JwtAuthGuard,
     OptionalJwtAuthGuard,
   ],
-  exports: [
-    AuthService,
-    JwtAuthGuard,
-    OptionalJwtAuthGuard,
-    JwtModule,
-    UsersModule,
-  ],
+  exports: [AuthService, JwtAuthGuard, OptionalJwtAuthGuard, JwtModule, UsersModule],
 })
 export class AuthModule {}

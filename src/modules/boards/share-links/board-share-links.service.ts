@@ -63,11 +63,7 @@ export class BoardShareLinksService {
     return this.shareLinksRepository.findActiveByBoard(boardId);
   }
 
-  async revokeShareLink(
-    boardId: string,
-    linkId: string,
-    userId: string,
-  ): Promise<ShareLinkRecord> {
+  async revokeShareLink(boardId: string, linkId: string, userId: string): Promise<ShareLinkRecord> {
     const board = await this.boardAclService.resolveBoardWithAccess(boardId, userId);
     this.boardAclService.assertOwner(board, userId, 'Only owner can revoke links');
 

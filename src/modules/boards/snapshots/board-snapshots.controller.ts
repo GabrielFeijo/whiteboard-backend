@@ -1,5 +1,5 @@
 import { Controller, Get, Param, Post, UseGuards } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { RequireBoardRoles } from '../../../common/decorators/board-roles.decorator';
 import { CurrentUser } from '../../../common/decorators/current-user.decorator';
 import { BoardAccessGuard } from '../../../common/guards/board-access.guard';
@@ -21,6 +21,8 @@ export class BoardSnapshotsController {
   @Get()
   @RequireBoardRoles('OWNER', 'EDITOR', 'VIEWER')
   @ApiOperation({ summary: 'List historical snapshots of a board' })
+  @ApiResponse({ status: 200, description: 'List of snapshots with version and metadata' })
+  @ApiResponse({ status: 403, description: 'Forbidden - access denied' })
   async listSnapshots(
     @Param('id', ParseCuidPipe) boardId: string,
     @CurrentUser('id') userId: string,
@@ -31,6 +33,9 @@ export class BoardSnapshotsController {
   @Post(':snapshotId/restore')
   @RequireBoardRoles('OWNER', 'EDITOR')
   @ApiOperation({ summary: 'Restore board canvas from a snapshot' })
+  @ApiResponse({ status: 200, description: 'Snapshot restored and published to connected clients' })
+  @ApiResponse({ status: 403, description: 'Forbidden - viewers cannot restore snapshots' })
+  @ApiResponse({ status: 404, description: 'Snapshot not found' })
   async restoreSnapshot(
     @Param('id', ParseCuidPipe) boardId: string,
     @Param('snapshotId', ParseCuidPipe) snapshotId: string,

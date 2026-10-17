@@ -1,8 +1,5 @@
 import { Module } from '@nestjs/common';
-import {
-  BOARD_ACL_RESOLVER,
-  BoardAccessGuard,
-} from '../../common/guards/board-access.guard';
+import { BOARD_ACL_RESOLVER, BoardAccessGuard } from '../../common/guards/board-access.guard';
 import { AuthModule } from '../auth/auth.module';
 import { BoardsController } from './controllers/boards.controller';
 import { BoardMembersController } from './members/board-members.controller';

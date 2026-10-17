@@ -1,5 +1,5 @@
 import { Body, Controller, Param, Post, UseGuards } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { RequireBoardRoles } from '../../common/decorators/board-roles.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { BoardAccessGuard } from '../../common/guards/board-access.guard';
@@ -19,6 +19,10 @@ export class AssetsController {
   @RequireBoardRoles('OWNER', 'EDITOR')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Generate a presigned S3/MinIO PUT upload URL for an asset' })
+  @ApiResponse({ status: 201, description: 'Presigned PUT URL generated successfully' })
+  @ApiResponse({ status: 400, description: 'Unsupported MIME type or invalid payload' })
+  @ApiResponse({ status: 403, description: 'Forbidden - viewers cannot upload assets' })
+  @ApiResponse({ status: 404, description: 'Board not found' })
   async presign(
     @Param('boardId', ParseCuidPipe) boardId: string,
     @CurrentUser('id') userId: string,

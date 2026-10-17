@@ -8,10 +8,7 @@ import { Reflector } from '@nestjs/core';
 import { Prisma } from '@prisma/client';
 import { describe, expect, it, vi } from 'vitest';
 import { GlobalExceptionFilter } from '../../src/common/filters/global-exception.filter';
-import {
-  BoardAccessGuard,
-  BoardAclResolver,
-} from '../../src/common/guards/board-access.guard';
+import { BoardAccessGuard, BoardAclResolver } from '../../src/common/guards/board-access.guard';
 import { ParseCuidPipe } from '../../src/common/pipes/parse-cuid.pipe';
 import { AuthenticatedRequest } from '../../src/common/types/express-request.interface';
 import { PrismaService } from '../../src/core/database/prisma.service';
@@ -118,9 +115,7 @@ describe('Architecture & Security Building Blocks (Filter, Guard, Pipe, Persiste
     const sampleUpdate = new Uint8Array([1, 2, 3, 4]);
     persistence.queueUpdate('board-1', sampleUpdate);
 
-    await expect(persistence.flushBoard('board-1')).rejects.toThrow(
-      'Transient DB connection drop',
-    );
+    await expect(persistence.flushBoard('board-1')).rejects.toThrow('Transient DB connection drop');
 
     await persistence.flushBoard('board-1');
     expect(createManyMock).toHaveBeenCalledTimes(2);
