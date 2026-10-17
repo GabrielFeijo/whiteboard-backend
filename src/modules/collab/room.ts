@@ -208,7 +208,11 @@ export class Room {
     return roots.elements.size > LIMITS.MAX_ELEMENTS;
   }
 
-  private handleValidationFailure(ws: WebSocket, meta: ClientMeta, reason?: string): void {
+  private handleValidationFailure(
+    ws: WebSocket,
+    meta: ClientMeta,
+    reason?: SyncValidationFailureReason,
+  ): void {
     if (reason === SyncValidationFailureReason.ELEMENT_QUOTA_EXCEEDED) {
       ws.close(WS_CLOSE.FORBIDDEN, 'Element limit exceeded');
       return;
