@@ -25,7 +25,9 @@ export class OptionalJwtAuthGuard implements CanActivate {
         secret: this.config.get('JWT_ACCESS_SECRET', { infer: true }),
       });
       Object.assign(request, { user: payload });
-    } catch { /* empty */ }
+    } catch {
+      void 0;
+    }
 
     return true;
   }
