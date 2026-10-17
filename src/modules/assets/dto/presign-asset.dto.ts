@@ -1,20 +1,26 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { IsIn, IsInt, IsNotEmpty, IsPositive, IsString, Max, MaxLength } from 'class-validator';
 
+export const AllowedAssetMimeType = {
+  JPEG: 'image/jpeg',
+  PNG: 'image/png',
+  WEBP: 'image/webp',
+  GIF: 'image/gif',
+} as const;
+export type AllowedAssetMimeType = (typeof AllowedAssetMimeType)[keyof typeof AllowedAssetMimeType];
+
 export const ALLOWED_ASSET_MIME_TYPES = [
-  'image/jpeg',
-  'image/png',
-  'image/webp',
-  'image/gif',
+  AllowedAssetMimeType.JPEG,
+  AllowedAssetMimeType.PNG,
+  AllowedAssetMimeType.WEBP,
+  AllowedAssetMimeType.GIF,
 ] as const;
 
-export type AllowedAssetMimeType = (typeof ALLOWED_ASSET_MIME_TYPES)[number];
-
 export const MIME_TO_EXTENSION: Readonly<Record<AllowedAssetMimeType, string>> = {
-  'image/jpeg': 'jpg',
-  'image/png': 'png',
-  'image/webp': 'webp',
-  'image/gif': 'gif',
+  [AllowedAssetMimeType.JPEG]: 'jpg',
+  [AllowedAssetMimeType.PNG]: 'png',
+  [AllowedAssetMimeType.WEBP]: 'webp',
+  [AllowedAssetMimeType.GIF]: 'gif',
 };
 
 export class PresignAssetDto {

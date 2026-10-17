@@ -11,8 +11,16 @@ const csv = (fallback: string) =>
         .filter(Boolean),
     );
 
+export const NodeEnv = {
+  DEVELOPMENT: 'development',
+  TEST: 'test',
+  PRODUCTION: 'production',
+} as const;
+export type NodeEnv = (typeof NodeEnv)[keyof typeof NodeEnv];
+export const NODE_ENVS = [NodeEnv.DEVELOPMENT, NodeEnv.TEST, NodeEnv.PRODUCTION] as const;
+
 export const EnvSchema = z.object({
-  NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
+  NODE_ENV: z.enum(NODE_ENVS).default(NodeEnv.DEVELOPMENT),
   API_PORT: z.coerce.number().int().default(3001),
   COLLAB_PORT: z.coerce.number().int().default(3002),
 

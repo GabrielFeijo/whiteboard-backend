@@ -2,7 +2,7 @@ import { ApiProperty } from '@nestjs/swagger';
 import { IsEmail, IsIn, IsNotEmpty } from 'class-validator';
 import { Role } from '../../../shared';
 
-export const INVITEABLE_ROLES: readonly Role[] = ['VIEWER', 'EDITOR'];
+export const INVITEABLE_ROLES = [Role.VIEWER, Role.EDITOR] as const;
 
 export class AddMemberDto {
   @ApiProperty({ description: 'User email to invite', example: 'collab@example.com' })
@@ -10,7 +10,7 @@ export class AddMemberDto {
   @IsNotEmpty({ message: 'Email cannot be empty' })
   email!: string;
 
-  @ApiProperty({ enum: ['VIEWER', 'EDITOR'], default: 'VIEWER' })
-  @IsIn(['VIEWER', 'EDITOR'], { message: 'Role must be either VIEWER or EDITOR' })
+  @ApiProperty({ enum: INVITEABLE_ROLES, default: Role.VIEWER })
+  @IsIn(INVITEABLE_ROLES, { message: 'Role must be either VIEWER or EDITOR' })
   role!: Role;
 }

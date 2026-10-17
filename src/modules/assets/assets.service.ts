@@ -1,6 +1,7 @@
 import { ForbiddenException, Injectable } from '@nestjs/common';
 import { nanoid } from 'nanoid';
 import { PresignedUploadResult, S3StorageService } from '../../core/storage/s3-storage.service';
+import { Role } from '../../shared';
 import { BoardAclService } from '../boards/services/board-acl.service';
 import { MIME_TO_EXTENSION, PresignAssetDto } from './dto/presign-asset.dto';
 
@@ -17,7 +18,7 @@ export class AssetsService {
     dto: PresignAssetDto,
   ): Promise<PresignedUploadResult> {
     const board = await this.boardAclService.resolveBoardWithAccess(boardId, userId);
-    if (board.currentUserRole === 'VIEWER') {
+    if (board.currentUserRole === Role.VIEWER) {
       throw new ForbiddenException('Viewers cannot upload assets');
     }
 

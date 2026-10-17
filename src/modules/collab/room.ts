@@ -7,9 +7,9 @@ import * as syncProtocol from 'y-protocols/sync';
 import * as Y from 'yjs';
 import { redisChannels } from '../../core/redis/redis-keys';
 import { RedisService } from '../../core/redis/redis.service';
-import { getDocRoots, LIMITS, MSG, Role, WS_CLOSE } from '../../shared';
+import { getDocRoots, LIMITS, MSG, Role, SnapshotReason, WS_CLOSE } from '../../shared';
 import { PersistenceService } from '../persistence/persistence.service';
-import { YjsValidatorService } from './services/yjs-validator.service';
+import { SyncValidationFailureReason, YjsValidatorService } from './services/yjs-validator.service';
 
 export interface ClientMeta {
   userId: string;
@@ -90,7 +90,7 @@ export class Room {
   async createSnapshot(): Promise<void> {
     this.dirtySinceLastSnapshot = false;
     const bytes = Y.encodeStateAsUpdate(this.doc);
-    await this.persistence.saveSnapshot(this.boardId, bytes, 'AUTO');
+    await this.persistence.saveSnapshot(this.boardId, bytes, SnapshotReason.AUTO);
   }
 
   attach(ws: WebSocket, meta: ClientMeta): void {
@@ -180,7 +180,7 @@ export class Room {
     data: Uint8Array,
     syncPayloadOffset: number,
   ): void {
-    if (meta.role === 'VIEWER') {
+    if (meta.role === Role.VIEWER) {
       return;
     }
 
@@ -209,7 +209,7 @@ export class Room {
   }
 
   private handleValidationFailure(ws: WebSocket, meta: ClientMeta, reason?: string): void {
-    if (reason === 'ELEMENT_QUOTA_EXCEEDED') {
+    if (reason === SyncValidationFailureReason.ELEMENT_QUOTA_EXCEEDED) {
       ws.close(WS_CLOSE.FORBIDDEN, 'Element limit exceeded');
       return;
     }

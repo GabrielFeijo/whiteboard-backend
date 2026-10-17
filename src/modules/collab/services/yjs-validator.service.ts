@@ -5,8 +5,14 @@ import * as syncProtocol from 'y-protocols/sync';
 import * as Y from 'yjs';
 import { ElementDataSchema, getDocRoots, LIMITS, Role } from '../../../shared';
 
+export const SyncValidationFailureReason = {
+  VIEWER_READ_ONLY: 'VIEWER_READ_ONLY',
+  META_FORBIDDEN: 'META_FORBIDDEN',
+  ELEMENT_QUOTA_EXCEEDED: 'ELEMENT_QUOTA_EXCEEDED',
+  INVALID_ELEMENT_SCHEMA: 'INVALID_ELEMENT_SCHEMA',
+} as const;
 export type SyncValidationFailureReason =
-  'VIEWER_READ_ONLY' | 'META_FORBIDDEN' | 'ELEMENT_QUOTA_EXCEEDED' | 'INVALID_ELEMENT_SCHEMA';
+  (typeof SyncValidationFailureReason)[keyof typeof SyncValidationFailureReason];
 
 export interface SyncValidationResult {
   valid: boolean;
@@ -20,8 +26,8 @@ export class YjsValidatorService {
     syncPayloadAfterMsgType: Uint8Array,
     role: Role,
   ): SyncValidationResult {
-    if (role === 'VIEWER') {
-      return { valid: false, reason: 'VIEWER_READ_ONLY' };
+    if (role === Role.VIEWER) {
+      return { valid: false, reason: SyncValidationFailureReason.VIEWER_READ_ONLY };
     }
 
     const shadowDoc = new Y.Doc();
@@ -38,17 +44,17 @@ export class YjsValidatorService {
 
       const shadowRoots = getDocRoots(shadowDoc);
 
-      if (role !== 'OWNER' && this.isMetaModified(beforeMetaJson, shadowRoots)) {
-        return { valid: false, reason: 'META_FORBIDDEN' };
+      if (role !== Role.OWNER && this.isMetaModified(beforeMetaJson, shadowRoots)) {
+        return { valid: false, reason: SyncValidationFailureReason.META_FORBIDDEN };
       }
 
       if (shadowRoots.elements.size > LIMITS.MAX_ELEMENTS) {
-        return { valid: false, reason: 'ELEMENT_QUOTA_EXCEEDED' };
+        return { valid: false, reason: SyncValidationFailureReason.ELEMENT_QUOTA_EXCEEDED };
       }
 
       const elementsJson = shadowRoots.elements.toJSON() as Record<string, unknown>;
       if (!this.areAllElementsValid(elementsJson)) {
-        return { valid: false, reason: 'INVALID_ELEMENT_SCHEMA' };
+        return { valid: false, reason: SyncValidationFailureReason.INVALID_ELEMENT_SCHEMA };
       }
 
       return { valid: true };

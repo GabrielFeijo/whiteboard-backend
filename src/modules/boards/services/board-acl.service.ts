@@ -50,7 +50,7 @@ export class BoardAclService implements BoardAclResolver {
     userId: string,
   ): Role | undefined {
     if (board.ownerId === userId) {
-      return 'OWNER';
+      return Role.OWNER;
     }
     return board.members.find((m) => m.userId === userId)?.role;
   }
@@ -116,12 +116,12 @@ export class BoardAclService implements BoardAclResolver {
     };
   }
 
-  private resolveEffectiveRole(directRole?: Role, linkRole: Role = 'VIEWER'): Role {
-    if (directRole === 'OWNER') {
-      return 'OWNER';
+  private resolveEffectiveRole(directRole?: Role, linkRole: Role = Role.VIEWER): Role {
+    if (directRole === Role.OWNER) {
+      return Role.OWNER;
     }
-    if (linkRole === 'EDITOR' || directRole === 'EDITOR') {
-      return 'EDITOR';
+    if (linkRole === Role.EDITOR || directRole === Role.EDITOR) {
+      return Role.EDITOR;
     }
     return linkRole;
   }
@@ -147,13 +147,13 @@ export class BoardAclService implements BoardAclResolver {
     userId: string,
     message: string,
   ): void {
-    if (board.ownerId !== userId && board.currentUserRole !== 'OWNER') {
+    if (board.ownerId !== userId && board.currentUserRole !== Role.OWNER) {
       throw new ForbiddenException(message);
     }
   }
 
   assertCanEdit(board: { currentUserRole: Role }, message: string): void {
-    if (board.currentUserRole !== 'OWNER' && board.currentUserRole !== 'EDITOR') {
+    if (board.currentUserRole !== Role.OWNER && board.currentUserRole !== Role.EDITOR) {
       throw new ForbiddenException(message);
     }
   }

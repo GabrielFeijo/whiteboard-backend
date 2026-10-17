@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import * as crypto from 'node:crypto';
 import { redisChannels } from '../../../core/redis/redis-keys';
 import { RedisService } from '../../../core/redis/redis.service';
-import { Role } from '../../../shared';
+import { RedisAclEventType, Role } from '../../../shared';
 import { CreateLinkDto } from '../dto/create-link.dto';
 import { BoardAclService } from '../services/board-acl.service';
 import {
@@ -45,7 +45,7 @@ export class BoardShareLinksService {
     const link = await this.shareLinksRepository.create({
       boardId,
       tokenHash,
-      role: dto.role ?? 'VIEWER',
+      role: dto.role ?? Role.VIEWER,
       expiresAt,
     });
 
@@ -71,7 +71,7 @@ export class BoardShareLinksService {
 
     await this.redis.client.publish(
       redisChannels.acl(boardId),
-      JSON.stringify({ type: 'REVOKE_LINK', linkId }),
+      JSON.stringify({ type: RedisAclEventType.REVOKE_LINK, linkId }),
     );
 
     return updated;

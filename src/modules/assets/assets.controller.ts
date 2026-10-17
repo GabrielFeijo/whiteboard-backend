@@ -6,6 +6,7 @@ import { BoardAccessGuard } from '../../common/guards/board-access.guard';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { ParseCuidPipe } from '../../common/pipes/parse-cuid.pipe';
 import { PresignedUploadResult } from '../../core/storage/s3-storage.service';
+import { Role } from '../../shared';
 import { AssetsService } from './assets.service';
 import { PresignAssetDto } from './dto/presign-asset.dto';
 
@@ -16,7 +17,7 @@ export class AssetsController {
 
   @Post('presign')
   @UseGuards(JwtAuthGuard, BoardAccessGuard)
-  @RequireBoardRoles('OWNER', 'EDITOR')
+  @RequireBoardRoles(Role.OWNER, Role.EDITOR)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Generate a presigned S3/MinIO PUT upload URL for an asset' })
   @ApiResponse({ status: 201, description: 'Presigned PUT URL generated successfully' })

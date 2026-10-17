@@ -1,14 +1,14 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Request, Response } from 'express';
-import { Env } from '../../../core/config/env';
+import { Env, NodeEnv } from '../../../core/config/env';
 
 @Injectable()
 export class AuthCookieService {
   constructor(private readonly config: ConfigService<Env, true>) {}
 
   private isSecureRequest(req?: Request): boolean {
-    const isProd = this.config.get('NODE_ENV', { infer: true }) === 'production';
+    const isProd = this.config.get('NODE_ENV', { infer: true }) === NodeEnv.PRODUCTION;
     const host = req?.headers.host ?? '';
     const isLocalhost = host.includes('localhost') || host.includes('127.0.0.1');
     return isProd && !isLocalhost;

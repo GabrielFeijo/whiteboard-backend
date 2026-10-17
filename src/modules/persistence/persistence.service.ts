@@ -1,5 +1,6 @@
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { PrismaService } from '../../core/database/prisma.service';
+import { SnapshotReason } from '../../shared';
 
 @Injectable()
 export class PersistenceService implements OnModuleInit, OnModuleDestroy {
@@ -71,7 +72,11 @@ export class PersistenceService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
-  async saveSnapshot(boardId: string, snapshotBytes: Uint8Array, reason = 'AUTO'): Promise<void> {
+  async saveSnapshot(
+    boardId: string,
+    snapshotBytes: Uint8Array,
+    reason: SnapshotReason = SnapshotReason.AUTO,
+  ): Promise<void> {
     await this.flushBoard(boardId);
 
     const executeSave = async (client: PrismaService): Promise<void> => {

@@ -48,7 +48,7 @@ export class BoardsService {
         ownerId: b.ownerId,
         createdAt: b.createdAt,
         updatedAt: b.updatedAt,
-        role: b.members[0]?.role ?? 'VIEWER',
+        role: b.members[0]?.role ?? Role.VIEWER,
         memberCount: b._count.members,
       })),
       nextCursor,

@@ -2,7 +2,7 @@ import { PrismaClient, Role } from '@prisma/client';
 import * as argon2 from 'argon2';
 import * as crypto from 'node:crypto';
 import * as Y from 'yjs';
-import { getDocRoots } from '../src/shared';
+import { getDocRoots, SnapshotReason } from '../src/shared';
 
 const prisma = new PrismaClient();
 
@@ -192,7 +192,7 @@ async function main(): Promise<void> {
       data: {
         boardId: archBoard.id,
         version: 1,
-        reason: 'INITIAL_SEED',
+        reason: SnapshotReason.INITIAL_SEED,
         data: Buffer.from(yjsUpdate),
       },
     });

@@ -1,19 +1,32 @@
 import * as Y from 'yjs';
 import { z } from 'zod';
 
+export const ElementType = {
+  RECT: 'rect',
+  ELLIPSE: 'ellipse',
+  DIAMOND: 'diamond',
+  LINE: 'line',
+  ARROW: 'arrow',
+  TEXT: 'text',
+  STICKY: 'sticky',
+  FREEHAND: 'freehand',
+  IMAGE: 'image',
+  GROUP: 'group',
+} as const;
+export type ElementType = (typeof ElementType)[keyof typeof ElementType];
+
 export const ELEMENT_TYPES = [
-  'rect',
-  'ellipse',
-  'diamond',
-  'line',
-  'arrow',
-  'text',
-  'sticky',
-  'freehand',
-  'image',
-  'group',
+  ElementType.RECT,
+  ElementType.ELLIPSE,
+  ElementType.DIAMOND,
+  ElementType.LINE,
+  ElementType.ARROW,
+  ElementType.TEXT,
+  ElementType.STICKY,
+  ElementType.FREEHAND,
+  ElementType.IMAGE,
+  ElementType.GROUP,
 ] as const;
-export type ElementType = (typeof ELEMENT_TYPES)[number];
 
 const finite = z.number().finite();
 
@@ -24,8 +37,22 @@ export const ElementStyleSchema = z.object({
   opacity: finite.min(0).max(1),
 });
 
-export const AnchorPointSchema = z.enum(['top', 'bottom', 'left', 'right']);
-export type AnchorPoint = z.infer<typeof AnchorPointSchema>;
+export const AnchorPoint = {
+  TOP: 'top',
+  BOTTOM: 'bottom',
+  LEFT: 'left',
+  RIGHT: 'right',
+} as const;
+export type AnchorPoint = (typeof AnchorPoint)[keyof typeof AnchorPoint];
+
+export const ANCHOR_POINTS = [
+  AnchorPoint.TOP,
+  AnchorPoint.BOTTOM,
+  AnchorPoint.LEFT,
+  AnchorPoint.RIGHT,
+] as const;
+
+export const AnchorPointSchema = z.enum(ANCHOR_POINTS);
 
 export const ArrowBindingSchema = z.object({
   elementId: z.string().max(64),
@@ -65,7 +92,7 @@ export const PresenceStateSchema = z.object({
   }),
   cursor: z.object({ x: finite, y: finite }).nullable(),
   selection: z.array(z.string().max(64)).max(5000),
-  draft: z.object({ type: z.literal('freehand'), points: z.array(finite) }).optional(),
+  draft: z.object({ type: z.literal(ElementType.FREEHAND), points: z.array(finite) }).optional(),
   viewport: z.object({ x: finite, y: finite, zoom: finite }).optional(),
 });
 export type PresenceState = z.infer<typeof PresenceStateSchema>;

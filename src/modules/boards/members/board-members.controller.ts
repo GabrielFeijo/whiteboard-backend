@@ -18,7 +18,7 @@ export class BoardMembersController {
   constructor(private readonly boardMembersService: BoardMembersService) {}
 
   @Post()
-  @RequireBoardRoles('OWNER')
+  @RequireBoardRoles(Role.OWNER)
   @ApiOperation({ summary: 'Add or invite a member to the board by email' })
   @ApiResponse({ status: 201, description: 'Member added or role updated' })
   @ApiResponse({ status: 400, description: 'Invalid role or target user is already owner' })
@@ -33,7 +33,7 @@ export class BoardMembersController {
   }
 
   @Get()
-  @RequireBoardRoles('OWNER', 'EDITOR', 'VIEWER')
+  @RequireBoardRoles(Role.OWNER, Role.EDITOR, Role.VIEWER)
   @ApiOperation({ summary: 'List all members of the board' })
   @ApiResponse({ status: 200, description: 'List of board members with user profiles' })
   @ApiResponse({ status: 403, description: 'Forbidden - access denied' })
@@ -45,7 +45,7 @@ export class BoardMembersController {
   }
 
   @Delete(':memberUserId')
-  @RequireBoardRoles('OWNER')
+  @RequireBoardRoles(Role.OWNER)
   @ApiOperation({ summary: 'Remove a member from the board' })
   @ApiResponse({ status: 200, description: 'Member removed and ACL revocation broadcast' })
   @ApiResponse({ status: 400, description: 'Cannot remove board owner' })

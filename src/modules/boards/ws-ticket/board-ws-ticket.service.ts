@@ -109,7 +109,7 @@ export class BoardWsTicketService {
 
     if (!linkToken) {
       return {
-        role: directRole ?? 'VIEWER',
+        role: directRole ?? Role.VIEWER,
         userId: user.id,
         userName: user.name,
       };
@@ -118,7 +118,7 @@ export class BoardWsTicketService {
     const link = await this.boardAclService.validateShareLink(boardId, linkToken);
     const effectiveRole = this.computeEffectiveRole(directRole, link.role);
 
-    if (effectiveRole !== 'OWNER') {
+    if (effectiveRole !== Role.OWNER) {
       await this.boardMembersRepository.enrollUser(boardId, user.id, effectiveRole);
     }
 
@@ -130,12 +130,12 @@ export class BoardWsTicketService {
     };
   }
 
-  private computeEffectiveRole(directRole?: Role, linkRole: Role = 'VIEWER'): Role {
-    if (directRole === 'OWNER') {
-      return 'OWNER';
+  private computeEffectiveRole(directRole?: Role, linkRole: Role = Role.VIEWER): Role {
+    if (directRole === Role.OWNER) {
+      return Role.OWNER;
     }
-    if (linkRole === 'EDITOR' || directRole === 'EDITOR') {
-      return 'EDITOR';
+    if (linkRole === Role.EDITOR || directRole === Role.EDITOR) {
+      return Role.EDITOR;
     }
     return linkRole;
   }

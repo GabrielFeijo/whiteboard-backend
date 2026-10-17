@@ -1,14 +1,14 @@
 import { Injectable, NestMiddleware } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { NextFunction, Request, Response } from 'express';
-import { Env } from '../../core/config/env';
+import { Env, NodeEnv } from '../../core/config/env';
 
 @Injectable()
 export class SecurityHeadersMiddleware implements NestMiddleware {
   private readonly isProd: boolean;
 
   constructor(config: ConfigService<Env, true>) {
-    this.isProd = config.get('NODE_ENV', { infer: true }) === 'production';
+    this.isProd = config.get('NODE_ENV', { infer: true }) === NodeEnv.PRODUCTION;
   }
 
   use(_req: Request, res: Response, next: NextFunction): void {

@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../../core/database/prisma.service';
-import { Role } from '../../../shared';
+import { Role, SnapshotReason } from '../../../shared';
 
 export interface BoardRecord {
   id: string;
@@ -43,7 +43,7 @@ export class BoardsRepository {
         data: {
           boardId: board.id,
           userId,
-          role: 'OWNER',
+          role: Role.OWNER,
         },
       });
 
@@ -126,7 +126,7 @@ export class BoardsRepository {
         data: {
           boardId: duplicated.id,
           userId,
-          role: 'OWNER',
+          role: Role.OWNER,
         },
       });
 
@@ -136,7 +136,7 @@ export class BoardsRepository {
             boardId: duplicated.id,
             data: Buffer.from(snapshotData),
             version: 1,
-            reason: 'MANUAL',
+            reason: SnapshotReason.MANUAL,
           },
         });
       }

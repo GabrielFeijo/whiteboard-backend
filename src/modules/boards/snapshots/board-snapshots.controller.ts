@@ -5,6 +5,7 @@ import { CurrentUser } from '../../../common/decorators/current-user.decorator';
 import { BoardAccessGuard } from '../../../common/guards/board-access.guard';
 import { JwtAuthGuard } from '../../../common/guards/jwt-auth.guard';
 import { ParseCuidPipe } from '../../../common/pipes/parse-cuid.pipe';
+import { Role } from '../../../shared';
 import {
   BoardSnapshotsService,
   RestoreSnapshotResult,
@@ -19,7 +20,7 @@ export class BoardSnapshotsController {
   constructor(private readonly boardSnapshotsService: BoardSnapshotsService) {}
 
   @Get()
-  @RequireBoardRoles('OWNER', 'EDITOR', 'VIEWER')
+  @RequireBoardRoles(Role.OWNER, Role.EDITOR, Role.VIEWER)
   @ApiOperation({ summary: 'List historical snapshots of a board' })
   @ApiResponse({ status: 200, description: 'List of snapshots with version and metadata' })
   @ApiResponse({ status: 403, description: 'Forbidden - access denied' })
@@ -31,7 +32,7 @@ export class BoardSnapshotsController {
   }
 
   @Post(':snapshotId/restore')
-  @RequireBoardRoles('OWNER', 'EDITOR')
+  @RequireBoardRoles(Role.OWNER, Role.EDITOR)
   @ApiOperation({ summary: 'Restore board canvas from a snapshot' })
   @ApiResponse({ status: 200, description: 'Snapshot restored and published to connected clients' })
   @ApiResponse({ status: 403, description: 'Forbidden - viewers cannot restore snapshots' })

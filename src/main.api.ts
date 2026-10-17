@@ -6,7 +6,7 @@ import { NestExpressApplication } from '@nestjs/platform-express';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import cookieParser from 'cookie-parser';
 import { AppModule } from './app.module';
-import { Env } from './core/config/env';
+import { Env, NodeEnv } from './core/config/env';
 
 async function bootstrap(): Promise<void> {
   const logger = new Logger('Bootstrap');
@@ -30,7 +30,7 @@ async function bootstrap(): Promise<void> {
     credentials: true,
   });
 
-  if (config.get('NODE_ENV', { infer: true }) !== 'production') {
+  if (config.get('NODE_ENV', { infer: true }) !== NodeEnv.PRODUCTION) {
     const doc = SwaggerModule.createDocument(
       app,
       new DocumentBuilder()

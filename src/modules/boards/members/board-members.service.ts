@@ -1,7 +1,7 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { redisChannels } from '../../../core/redis/redis-keys';
 import { RedisService } from '../../../core/redis/redis.service';
-import { Role } from '../../../shared';
+import { RedisAclEventType, Role } from '../../../shared';
 import { UsersRepository } from '../../users/users.repository';
 import { AddMemberDto } from '../dto/add-member.dto';
 import { BoardAclService } from '../services/board-acl.service';
@@ -59,7 +59,7 @@ export class BoardMembersService {
 
     await this.redis.client.publish(
       redisChannels.acl(boardId),
-      JSON.stringify({ type: 'REMOVE_MEMBER', userId: memberUserId }),
+      JSON.stringify({ type: RedisAclEventType.REMOVE_MEMBER, userId: memberUserId }),
     );
 
     return removed;

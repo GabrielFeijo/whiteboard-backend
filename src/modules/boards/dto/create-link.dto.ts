@@ -2,13 +2,13 @@ import { ApiPropertyOptional } from '@nestjs/swagger';
 import { IsIn, IsInt, IsOptional, Max, Min } from 'class-validator';
 import { Role } from '../../../shared';
 
-export const SHARE_LINK_ROLES: readonly Role[] = ['VIEWER', 'EDITOR'];
+export const SHARE_LINK_ROLES = [Role.VIEWER, Role.EDITOR] as const;
 
 export class CreateLinkDto {
-  @ApiPropertyOptional({ enum: ['VIEWER', 'EDITOR'], default: 'VIEWER' })
+  @ApiPropertyOptional({ enum: SHARE_LINK_ROLES, default: Role.VIEWER })
   @IsOptional()
-  @IsIn(['VIEWER', 'EDITOR'], { message: 'Share link role must be either VIEWER or EDITOR' })
-  role?: Role = 'VIEWER';
+  @IsIn(SHARE_LINK_ROLES, { message: 'Share link role must be either VIEWER or EDITOR' })
+  role?: Role = Role.VIEWER;
 
   @ApiPropertyOptional({ description: 'Validity in hours (optional)', example: 24 })
   @IsOptional()

@@ -16,6 +16,7 @@ import { BoardAccessGuard } from '../../../common/guards/board-access.guard';
 import { JwtAuthGuard } from '../../../common/guards/jwt-auth.guard';
 import { OptionalJwtAuthGuard } from '../../../common/guards/optional-jwt-auth.guard';
 import { ParseCuidPipe } from '../../../common/pipes/parse-cuid.pipe';
+import { Role } from '../../../shared';
 import { CreateBoardDto } from '../dto/create-board.dto';
 import { FindBoardQueryDto } from '../dto/find-board-query.dto';
 import { PaginationQueryDto } from '../dto/pagination-query.dto';
@@ -76,7 +77,7 @@ export class BoardsController {
 
   @Patch(':id')
   @UseGuards(JwtAuthGuard, BoardAccessGuard)
-  @RequireBoardRoles('OWNER', 'EDITOR')
+  @RequireBoardRoles(Role.OWNER, Role.EDITOR)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Rename or update a board' })
   @ApiResponse({ status: 200, description: 'Board updated successfully' })
@@ -92,7 +93,7 @@ export class BoardsController {
 
   @Post(':id/duplicate')
   @UseGuards(JwtAuthGuard, BoardAccessGuard)
-  @RequireBoardRoles('OWNER', 'EDITOR', 'VIEWER')
+  @RequireBoardRoles(Role.OWNER, Role.EDITOR, Role.VIEWER)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Duplicate a board and its latest snapshot' })
   @ApiResponse({ status: 201, description: 'Board duplicated successfully' })
@@ -107,7 +108,7 @@ export class BoardsController {
 
   @Delete(':id')
   @UseGuards(JwtAuthGuard, BoardAccessGuard)
-  @RequireBoardRoles('OWNER')
+  @RequireBoardRoles(Role.OWNER)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Soft-delete a board (owner only)' })
   @ApiResponse({ status: 200, description: 'Board soft-deleted successfully' })

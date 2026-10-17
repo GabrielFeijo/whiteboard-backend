@@ -136,18 +136,25 @@ export class GlobalExceptionFilter implements ExceptionFilter {
   }
 }
 
+export const PrismaErrorCode = {
+  NOT_FOUND: 'P2025',
+  UNIQUE_CONSTRAINT_FAILED: 'P2002',
+  FOREIGN_KEY_FAILED: 'P2003',
+} as const;
+export type PrismaErrorCode = (typeof PrismaErrorCode)[keyof typeof PrismaErrorCode];
+
 const PRISMA_ERROR_MAPPINGS: Record<string, { status: number; message: string; error: string }> = {
-  P2025: {
+  [PrismaErrorCode.NOT_FOUND]: {
     status: HttpStatus.NOT_FOUND,
     message: 'Requested record was not found',
     error: 'Not Found',
   },
-  P2002: {
+  [PrismaErrorCode.UNIQUE_CONSTRAINT_FAILED]: {
     status: HttpStatus.CONFLICT,
     message: 'Resource already exists with conflicting unique constraint',
     error: 'Conflict',
   },
-  P2003: {
+  [PrismaErrorCode.FOREIGN_KEY_FAILED]: {
     status: HttpStatus.BAD_REQUEST,
     message: 'Invalid relation reference',
     error: 'Bad Request',

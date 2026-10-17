@@ -5,6 +5,7 @@ import { z } from 'zod';
 import { MetricsService } from '../../core/observability/metrics/metrics.service';
 import { redisChannels } from '../../core/redis/redis-keys';
 import { RedisService } from '../../core/redis/redis.service';
+import { RedisAclEventType } from '../../shared';
 import { PersistenceService } from '../persistence/persistence.service';
 import { Room } from './room';
 import { YjsValidatorService } from './services/yjs-validator.service';
@@ -17,11 +18,11 @@ const RedisRestorePayloadSchema = z.object({
 
 const RedisAclPayloadSchema = z.discriminatedUnion('type', [
   z.object({
-    type: z.literal('REVOKE_LINK'),
+    type: z.literal(RedisAclEventType.REVOKE_LINK),
     linkId: z.string().min(1),
   }),
   z.object({
-    type: z.literal('REMOVE_MEMBER'),
+    type: z.literal(RedisAclEventType.REMOVE_MEMBER),
     userId: z.string().min(1),
   }),
 ]);
@@ -102,12 +103,12 @@ export class RoomManagerService implements OnModuleInit, OnModuleDestroy {
         return;
       }
 
-      if (validated.data.type === 'REVOKE_LINK') {
+      if (validated.data.type === RedisAclEventType.REVOKE_LINK) {
         room.revokeClientAccess({ linkId: validated.data.linkId });
         return;
       }
 
-      if (validated.data.type === 'REMOVE_MEMBER') {
+      if (validated.data.type === RedisAclEventType.REMOVE_MEMBER) {
         room.revokeClientAccess({ userId: validated.data.userId });
         return;
       }
