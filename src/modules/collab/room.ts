@@ -70,32 +70,8 @@ export class Room {
     this.doc.on('update', this.updateHandler);
 
     this.awarenessHandler = ({ added, updated, removed }, origin: unknown) => {
-      if (origin && this.clients.has(origin as WebSocket)) {
-        const ws = origin as WebSocket;
-        let set = this.clientIdsBySocket.get(ws);
-        if (!set) {
-          set = new Set();
-          this.clientIdsBySocket.set(ws, set);
-        }
-        for (const id of added) set.add(id);
-        for (const id of updated) set.add(id);
-        for (const id of removed) set.delete(id);
-      }
-
-      const changedClients = added.concat(updated).concat(removed);
-      const encoder = encoding.createEncoder();
-      encoding.writeVarUint(encoder, MSG.AWARENESS);
-      encoding.writeVarUint8Array(
-        encoder,
-        awarenessProtocol.encodeAwarenessUpdate(this.awareness, changedClients),
-      );
-      const buff = encoding.toUint8Array(encoder);
-
-      for (const [ws] of this.clients) {
-        if (ws !== origin && ws.readyState === WebSocket.OPEN) {
-          ws.send(buff);
-        }
-      }
+      this.trackClientAwarenessIds(origin, added, updated, removed);
+      this.broadcastAwarenessUpdate(added, updated, removed, origin);
     };
     this.awareness.on('update', this.awarenessHandler);
 
@@ -155,75 +131,154 @@ export class Room {
       const messageType = decoding.readVarUint(decoder);
 
       if (messageType === MSG.SYNC) {
-        const encoder = encoding.createEncoder();
-        encoding.writeVarUint(encoder, MSG.SYNC);
+        this.processSyncMessage(ws, decoder, meta, data);
+        return;
+      }
 
-        const syncPayloadOffset = decoder.pos;
-        const syncMessageType = decoding.readVarUint(decoder);
-        decoder.pos = syncPayloadOffset;
-
-        if (syncMessageType === syncProtocol.messageYjsSyncStep1) {
-          syncProtocol.readSyncMessage(decoder, encoder, this.doc, ws);
-          if (encoding.length(encoder) > 1) {
-            ws.send(encoding.toUint8Array(encoder));
-          }
-        } else {
-          if (meta.role === 'VIEWER') {
-            return;
-          }
-
-          const roots = getDocRoots(this.doc);
-          if (roots.elements.size > LIMITS.MAX_ELEMENTS) {
-            ws.close(WS_CLOSE.FORBIDDEN, 'Element limit exceeded');
-            return;
-          }
-
-          const syncPayloadSlice = data.subarray(syncPayloadOffset);
-          const validation = this.validator.validateSyncUpdate(
-            this.doc,
-            syncPayloadSlice,
-            meta.role,
-          );
-
-          if (!validation.valid) {
-            if (validation.reason === 'ELEMENT_QUOTA_EXCEEDED') {
-              ws.close(WS_CLOSE.FORBIDDEN, 'Element limit exceeded');
-              return;
-            }
-            this.logger.warn(
-              `Rejected invalid Yjs update (${validation.reason}) from user ${meta.userId} in board ${this.boardId}`,
-            );
-            this.sendAuthoritativeStateToClient(ws);
-            return;
-          }
-
-          syncProtocol.readSyncMessage(decoder, encoder, this.doc, ws);
-          if (encoding.length(encoder) > 1) {
-            ws.send(encoding.toUint8Array(encoder));
-          }
-        }
-      } else if (messageType === MSG.AWARENESS) {
-        awarenessProtocol.applyAwarenessUpdate(
-          this.awareness,
-          decoding.readVarUint8Array(decoder),
-          ws,
-        );
+      if (messageType === MSG.AWARENESS) {
+        this.processAwarenessMessage(ws, decoder);
+        return;
       }
     } catch (err) {
       this.logger.warn(`Failed to process message from client in room ${this.boardId}`, err);
     }
   }
 
+  private processAwarenessMessage(ws: WebSocket, decoder: decoding.Decoder): void {
+    awarenessProtocol.applyAwarenessUpdate(this.awareness, decoding.readVarUint8Array(decoder), ws);
+  }
+
+  private processSyncMessage(
+    ws: WebSocket,
+    decoder: decoding.Decoder,
+    meta: ClientMeta,
+    data: Uint8Array,
+  ): void {
+    const syncPayloadOffset = decoder.pos;
+    const syncMessageType = decoding.readVarUint(decoder);
+    decoder.pos = syncPayloadOffset;
+
+    if (syncMessageType === syncProtocol.messageYjsSyncStep1) {
+      this.handleSyncStep1(ws, decoder);
+      return;
+    }
+
+    this.handleSyncUpdate(ws, decoder, meta, data, syncPayloadOffset);
+  }
+
+  private handleSyncStep1(ws: WebSocket, decoder: decoding.Decoder): void {
+    const encoder = encoding.createEncoder();
+    encoding.writeVarUint(encoder, MSG.SYNC);
+    syncProtocol.readSyncMessage(decoder, encoder, this.doc, ws);
+    this.sendEncodedReply(ws, encoder);
+  }
+
+  private handleSyncUpdate(
+    ws: WebSocket,
+    decoder: decoding.Decoder,
+    meta: ClientMeta,
+    data: Uint8Array,
+    syncPayloadOffset: number,
+  ): void {
+    if (meta.role === 'VIEWER') {
+      return;
+    }
+
+    if (this.isElementLimitExceeded()) {
+      ws.close(WS_CLOSE.FORBIDDEN, 'Element limit exceeded');
+      return;
+    }
+
+    const syncPayloadSlice = data.subarray(syncPayloadOffset);
+    const validation = this.validator.validateSyncUpdate(this.doc, syncPayloadSlice, meta.role);
+
+    if (!validation.valid) {
+      this.handleValidationFailure(ws, meta, validation.reason);
+      return;
+    }
+
+    const encoder = encoding.createEncoder();
+    encoding.writeVarUint(encoder, MSG.SYNC);
+    syncProtocol.readSyncMessage(decoder, encoder, this.doc, ws);
+    this.sendEncodedReply(ws, encoder);
+  }
+
+  private isElementLimitExceeded(): boolean {
+    const roots = getDocRoots(this.doc);
+    return roots.elements.size > LIMITS.MAX_ELEMENTS;
+  }
+
+  private handleValidationFailure(ws: WebSocket, meta: ClientMeta, reason?: string): void {
+    if (reason === 'ELEMENT_QUOTA_EXCEEDED') {
+      ws.close(WS_CLOSE.FORBIDDEN, 'Element limit exceeded');
+      return;
+    }
+
+    this.logger.warn(
+      `Rejected invalid Yjs update (${reason}) from user ${meta.userId} in board ${this.boardId}`,
+    );
+    this.sendAuthoritativeStateToClient(ws);
+  }
+
+  private trackClientAwarenessIds(
+    origin: unknown,
+    added: number[],
+    updated: number[],
+    removed: number[],
+  ): void {
+    if (!origin || !this.clients.has(origin as WebSocket)) {
+      return;
+    }
+
+    const ws = origin as WebSocket;
+    const set = this.clientIdsBySocket.get(ws) ?? new Set<number>();
+    this.clientIdsBySocket.set(ws, set);
+
+    for (const id of added) set.add(id);
+    for (const id of updated) set.add(id);
+    for (const id of removed) set.delete(id);
+  }
+
+  private broadcastAwarenessUpdate(
+    added: number[],
+    updated: number[],
+    removed: number[],
+    origin: unknown,
+  ): void {
+    const changedClients = added.concat(updated).concat(removed);
+    const encoder = encoding.createEncoder();
+    encoding.writeVarUint(encoder, MSG.AWARENESS);
+    encoding.writeVarUint8Array(
+      encoder,
+      awarenessProtocol.encodeAwarenessUpdate(this.awareness, changedClients),
+    );
+    const buff = encoding.toUint8Array(encoder);
+
+    for (const [ws] of this.clients) {
+      if (ws !== origin && ws.readyState === WebSocket.OPEN) {
+        ws.send(buff);
+      }
+    }
+  }
+
+  private sendEncodedReply(ws: WebSocket, encoder: encoding.Encoder): void {
+    if (encoding.length(encoder) <= 1) {
+      return;
+    }
+    ws.send(encoding.toUint8Array(encoder));
+  }
+
   revokeClientAccess(filter: { userId?: string; linkId?: string }): void {
     for (const [ws, meta] of this.clients.entries()) {
       const matchesUser = Boolean(filter.userId && meta.userId === filter.userId);
       const matchesLink = Boolean(filter.linkId && meta.linkId === filter.linkId);
-      if (matchesUser || matchesLink) {
-        if (typeof ws.close === 'function') {
-          ws.close(WS_CLOSE.FORBIDDEN, 'Access revoked');
-        }
-        this.detach(ws);
+      if (!matchesUser && !matchesLink) {
+        continue;
       }
+      if (typeof ws.close === 'function') {
+        ws.close(WS_CLOSE.FORBIDDEN, 'Access revoked');
+      }
+      this.detach(ws);
     }
   }
 
@@ -234,11 +289,14 @@ export class Room {
       awarenessProtocol.removeAwarenessStates(this.awareness, Array.from(clientIds), null);
     }
     this.clientIdsBySocket.delete(ws);
-    if (this.clients.size === 0) {
-      const remainingIds = Array.from(this.awareness.getStates().keys());
-      if (remainingIds.length > 0) {
-        awarenessProtocol.removeAwarenessStates(this.awareness, remainingIds, null);
-      }
+
+    if (this.clients.size > 0) {
+      return;
+    }
+
+    const remainingIds = Array.from(this.awareness.getStates().keys());
+    if (remainingIds.length > 0) {
+      awarenessProtocol.removeAwarenessStates(this.awareness, remainingIds, null);
     }
   }
 

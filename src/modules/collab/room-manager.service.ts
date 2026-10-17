@@ -55,58 +55,64 @@ export class RoomManagerService implements OnModuleInit, OnModuleDestroy {
   }
 
   private handleRedisMessage(channel: string, message: string): void {
-    const matchUpdate = channel.match(/^board:(.+):updates$/);
-    if (matchUpdate) {
-      const boardId = matchUpdate[1];
-      const room = this.rooms.get(boardId);
-      if (room) {
-        room.applyRemoteRedisUpdate(message);
-      }
+    const match = channel.match(/^board:(.+):(updates|restore|acl)$/);
+    if (!match) return;
+
+    const [, boardId, action] = match;
+    const room = this.rooms.get(boardId);
+    if (!room) return;
+
+    if (action === 'updates') {
+      room.applyRemoteRedisUpdate(message);
       return;
     }
 
-    const matchRestore = channel.match(/^board:(.+):restore$/);
-    if (matchRestore) {
-      const boardId = matchRestore[1];
-      const room = this.rooms.get(boardId);
-      if (room) {
-        try {
-          const parsedJson: unknown = JSON.parse(message);
-          const validated = RedisRestorePayloadSchema.safeParse(parsedJson);
-          if (!validated.success) {
-            this.logger.warn(`Invalid restore payload on channel ${channel}`);
-            return;
-          }
-          const snapshotBuffer = Buffer.from(validated.data.data, 'base64');
-          room.restoreSnapshot(new Uint8Array(snapshotBuffer));
-        } catch (err) {
-          this.logger.error(`Failed to apply restored snapshot to room ${boardId}`, err);
-        }
-      }
+    if (action === 'restore') {
+      this.applyRedisRestore(boardId, room, message);
       return;
     }
 
-    const matchAcl = channel.match(/^board:(.+):acl$/);
-    if (matchAcl) {
-      const boardId = matchAcl[1];
-      const room = this.rooms.get(boardId);
-      if (room) {
-        try {
-          const parsedJson: unknown = JSON.parse(message);
-          const validated = RedisAclPayloadSchema.safeParse(parsedJson);
-          if (!validated.success) {
-            this.logger.warn(`Invalid ACL payload on channel ${channel}`);
-            return;
-          }
-          if (validated.data.type === 'REVOKE_LINK') {
-            room.revokeClientAccess({ linkId: validated.data.linkId });
-          } else if (validated.data.type === 'REMOVE_MEMBER') {
-            room.revokeClientAccess({ userId: validated.data.userId });
-          }
-        } catch (err) {
-          this.logger.error(`Failed to process ACL event for room ${boardId}`, err);
-        }
+    if (action === 'acl') {
+      this.applyRedisAcl(boardId, room, message);
+      return;
+    }
+  }
+
+  private applyRedisRestore(boardId: string, room: Room, message: string): void {
+    try {
+      const parsedJson: unknown = JSON.parse(message);
+      const validated = RedisRestorePayloadSchema.safeParse(parsedJson);
+      if (!validated.success) {
+        this.logger.warn(`Invalid restore payload on board ${boardId}`);
+        return;
       }
+      const snapshotBuffer = Buffer.from(validated.data.data, 'base64');
+      room.restoreSnapshot(new Uint8Array(snapshotBuffer));
+    } catch (err) {
+      this.logger.error(`Failed to apply restored snapshot to room ${boardId}`, err);
+    }
+  }
+
+  private applyRedisAcl(boardId: string, room: Room, message: string): void {
+    try {
+      const parsedJson: unknown = JSON.parse(message);
+      const validated = RedisAclPayloadSchema.safeParse(parsedJson);
+      if (!validated.success) {
+        this.logger.warn(`Invalid ACL payload on board ${boardId}`);
+        return;
+      }
+
+      if (validated.data.type === 'REVOKE_LINK') {
+        room.revokeClientAccess({ linkId: validated.data.linkId });
+        return;
+      }
+
+      if (validated.data.type === 'REMOVE_MEMBER') {
+        room.revokeClientAccess({ userId: validated.data.userId });
+        return;
+      }
+    } catch (err) {
+      this.logger.error(`Failed to process ACL event for room ${boardId}`, err);
     }
   }
 

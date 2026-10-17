@@ -103,9 +103,10 @@ export class PersistenceService implements OnModuleInit, OnModuleDestroy {
       await this.prisma.$transaction(async (tx) => {
         await executeSave(tx as unknown as PrismaService);
       });
-    } else {
-      await executeSave(this.prisma);
+      return;
     }
+
+    await executeSave(this.prisma);
   }
 
   async loadInitialState(

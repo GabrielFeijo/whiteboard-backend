@@ -72,55 +72,60 @@ export class GlobalExceptionFilter implements ExceptionFilter {
     error: string;
   } {
     if (exception instanceof HttpException) {
-      const status = exception.getStatus();
-      const rawResponse = exception.getResponse();
+      return this.resolveHttpException(exception);
+    }
 
-      if (typeof rawResponse === 'string') {
-        return {
-          status,
-          message: rawResponse,
-          error: exception.name,
-        };
-      }
+    if (exception instanceof Prisma.PrismaClientKnownRequestError) {
+      return this.resolvePrismaException(exception);
+    }
 
-      if (typeof rawResponse === 'object' && rawResponse !== null) {
-        const obj = rawResponse as HttpExceptionResponseObj;
-        return {
-          status,
-          message: obj.message ?? exception.message,
-          error: obj.error ?? exception.name,
-        };
-      }
+    return {
+      status: HttpStatus.INTERNAL_SERVER_ERROR,
+      message: 'Internal server error',
+      error: 'Internal Server Error',
+    };
+  }
 
+  private resolveHttpException(exception: HttpException): {
+    status: number;
+    message: string | string[];
+    error: string;
+  } {
+    const status = exception.getStatus();
+    const rawResponse = exception.getResponse();
+
+    if (typeof rawResponse === 'string') {
       return {
         status,
-        message: exception.message,
+        message: rawResponse,
         error: exception.name,
       };
     }
 
-    if (exception instanceof Prisma.PrismaClientKnownRequestError) {
-      if (exception.code === 'P2025') {
-        return {
-          status: HttpStatus.NOT_FOUND,
-          message: 'Requested record was not found',
-          error: 'Not Found',
-        };
-      }
-      if (exception.code === 'P2002') {
-        return {
-          status: HttpStatus.CONFLICT,
-          message: 'Resource already exists with conflicting unique constraint',
-          error: 'Conflict',
-        };
-      }
-      if (exception.code === 'P2003') {
-        return {
-          status: HttpStatus.BAD_REQUEST,
-          message: 'Invalid relation reference',
-          error: 'Bad Request',
-        };
-      }
+    if (typeof rawResponse === 'object' && rawResponse !== null) {
+      const obj = rawResponse as HttpExceptionResponseObj;
+      return {
+        status,
+        message: obj.message ?? exception.message,
+        error: obj.error ?? exception.name,
+      };
+    }
+
+    return {
+      status,
+      message: exception.message,
+      error: exception.name,
+    };
+  }
+
+  private resolvePrismaException(exception: Prisma.PrismaClientKnownRequestError): {
+    status: number;
+    message: string | string[];
+    error: string;
+  } {
+    const mapped = PRISMA_ERROR_MAPPINGS[exception.code];
+    if (mapped) {
+      return mapped;
     }
 
     return {
@@ -130,3 +135,21 @@ export class GlobalExceptionFilter implements ExceptionFilter {
     };
   }
 }
+
+const PRISMA_ERROR_MAPPINGS: Record<string, { status: number; message: string; error: string }> = {
+  P2025: {
+    status: HttpStatus.NOT_FOUND,
+    message: 'Requested record was not found',
+    error: 'Not Found',
+  },
+  P2002: {
+    status: HttpStatus.CONFLICT,
+    message: 'Resource already exists with conflicting unique constraint',
+    error: 'Conflict',
+  },
+  P2003: {
+    status: HttpStatus.BAD_REQUEST,
+    message: 'Invalid relation reference',
+    error: 'Bad Request',
+  },
+};

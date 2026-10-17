@@ -65,15 +65,12 @@ export class CollabGateway
   }
 
   async handleConnection(client: WebSocket, req: IncomingMessage): Promise<void> {
-    const origin = req.headers.origin;
-    const allowed = this.config.get('ALLOWED_ORIGINS', { infer: true });
-    if (origin && !allowed.includes(origin)) {
+    if (!this.isOriginAllowed(req.headers.origin)) {
       client.close(WS_CLOSE.FORBIDDEN, 'Origin not allowed');
       return;
     }
 
-    const url = new URL(req.url || '', 'http://localhost');
-    const ticket = url.searchParams.get('ticket');
+    const ticket = this.extractTicket(req.url);
     if (!ticket) {
       client.close(WS_CLOSE.UNAUTHORIZED, 'Ticket required');
       return;
@@ -85,19 +82,12 @@ export class CollabGateway
       return;
     }
 
-    const currentConns = this.userConnectionCounts.get(payload.userId) ?? 0;
-    if (currentConns >= LIMITS.MAX_CONNECTIONS_PER_USER) {
+    if (this.isUserRateLimited(payload.userId)) {
       client.close(WS_CLOSE.RATE_LIMITED, 'Too many connections for user');
       return;
     }
 
-    this.userConnectionCounts.set(payload.userId, currentConns + 1);
-    this.socketContexts.set(client, {
-      userId: payload.userId,
-      boardId: payload.boardId,
-      isAlive: true,
-    });
-    this.metrics.setActiveConnections(this.socketContexts.size);
+    this.registerConnection(client, payload.userId, payload.boardId);
 
     client.on('pong', () => {
       const ctx = this.socketContexts.get(client);
@@ -107,18 +97,12 @@ export class CollabGateway
     const room = await this.roomManager.getOrLoadRoom(payload.boardId);
 
     if (!this.socketContexts.has(client) || client.readyState !== WebSocket.OPEN) {
-      if (this.socketContexts.has(client)) {
-        this.decrementUserConnection(payload.userId);
-        this.socketContexts.delete(client);
-        this.metrics.setActiveConnections(this.socketContexts.size);
-      }
+      this.unregisterConnection(client, payload.userId);
       return;
     }
 
     if (room.clients.size >= LIMITS.MAX_PARTICIPANTS_PER_BOARD) {
-      this.decrementUserConnection(payload.userId);
-      this.socketContexts.delete(client);
-      this.metrics.setActiveConnections(this.socketContexts.size);
+      this.unregisterConnection(client, payload.userId);
       client.close(WS_CLOSE.RATE_LIMITED, 'Room capacity exceeded');
       return;
     }
@@ -140,22 +124,54 @@ export class CollabGateway
     });
   }
 
+  private isOriginAllowed(origin?: string): boolean {
+    if (!origin) return true;
+    const allowed = this.config.get('ALLOWED_ORIGINS', { infer: true });
+    return allowed.includes(origin);
+  }
+
+  private extractTicket(rawUrl?: string): string | null {
+    const parsed = new URL(rawUrl || '', 'http://localhost');
+    return parsed.searchParams.get('ticket');
+  }
+
+  private isUserRateLimited(userId: string): boolean {
+    const current = this.userConnectionCounts.get(userId) ?? 0;
+    return current >= LIMITS.MAX_CONNECTIONS_PER_USER;
+  }
+
+  private registerConnection(client: WebSocket, userId: string, boardId: string): void {
+    const currentConns = this.userConnectionCounts.get(userId) ?? 0;
+    this.userConnectionCounts.set(userId, currentConns + 1);
+    this.socketContexts.set(client, {
+      userId,
+      boardId,
+      isAlive: true,
+    });
+    this.metrics.setActiveConnections(this.socketContexts.size);
+  }
+
+  private unregisterConnection(client: WebSocket, userId: string): void {
+    if (!this.socketContexts.has(client)) return;
+    this.decrementUserConnection(userId);
+    this.socketContexts.delete(client);
+    this.metrics.setActiveConnections(this.socketContexts.size);
+  }
+
   private decrementUserConnection(userId: string): void {
     const current = this.userConnectionCounts.get(userId) ?? 1;
     if (current <= 1) {
       this.userConnectionCounts.delete(userId);
-    } else {
-      this.userConnectionCounts.set(userId, current - 1);
+      return;
     }
+    this.userConnectionCounts.set(userId, current - 1);
   }
 
   handleDisconnect(client: WebSocket): void {
     const ctx = this.socketContexts.get(client);
     if (!ctx) return;
 
-    this.decrementUserConnection(ctx.userId);
-    this.socketContexts.delete(client);
-    this.metrics.setActiveConnections(this.socketContexts.size);
+    this.unregisterConnection(client, ctx.userId);
 
     const activeRoom = this.roomManager.getActiveRoom(ctx.boardId);
     if (activeRoom) {

@@ -31,13 +31,7 @@ export class MetricsService {
       '# TYPE whiteboard_http_requests_total counter',
     ];
 
-    if (this.httpRequestsTotal.size === 0) {
-      lines.push('whiteboard_http_requests_total{method="GET",status="200"} 0');
-    } else {
-      this.httpRequestsTotal.forEach((count, labels) => {
-        lines.push(`whiteboard_http_requests_total{${labels}} ${count}`);
-      });
-    }
+    this.appendHttpMetrics(lines);
 
     lines.push(
       '',
@@ -56,5 +50,16 @@ export class MetricsService {
     );
 
     return lines.join('\n');
+  }
+
+  private appendHttpMetrics(lines: string[]): void {
+    if (this.httpRequestsTotal.size === 0) {
+      lines.push('whiteboard_http_requests_total{method="GET",status="200"} 0');
+      return;
+    }
+
+    this.httpRequestsTotal.forEach((count, labels) => {
+      lines.push(`whiteboard_http_requests_total{${labels}} ${count}`);
+    });
   }
 }

@@ -38,11 +38,8 @@ export class YjsValidatorService {
 
       const shadowRoots = getDocRoots(shadowDoc);
 
-      if (role !== 'OWNER') {
-        const afterMetaJson = JSON.stringify(shadowRoots.meta.toJSON());
-        if (beforeMetaJson !== afterMetaJson) {
-          return { valid: false, reason: 'META_FORBIDDEN' };
-        }
+      if (role !== 'OWNER' && this.isMetaModified(beforeMetaJson, shadowRoots)) {
+        return { valid: false, reason: 'META_FORBIDDEN' };
       }
 
       if (shadowRoots.elements.size > LIMITS.MAX_ELEMENTS) {
@@ -50,18 +47,31 @@ export class YjsValidatorService {
       }
 
       const elementsJson = shadowRoots.elements.toJSON() as Record<string, unknown>;
-      for (const [, rawElement] of Object.entries(elementsJson)) {
-        if (rawElement && typeof rawElement === 'object') {
-          const parsed = ElementDataSchema.safeParse(rawElement);
-          if (!parsed.success) {
-            return { valid: false, reason: 'INVALID_ELEMENT_SCHEMA' };
-          }
-        }
+      if (!this.areAllElementsValid(elementsJson)) {
+        return { valid: false, reason: 'INVALID_ELEMENT_SCHEMA' };
       }
 
       return { valid: true };
     } finally {
       shadowDoc.destroy();
     }
+  }
+
+  private isMetaModified(beforeMetaJson: string, shadowRoots: { meta: Y.Map<unknown> }): boolean {
+    const afterMetaJson = JSON.stringify(shadowRoots.meta.toJSON());
+    return beforeMetaJson !== afterMetaJson;
+  }
+
+  private areAllElementsValid(elementsJson: Record<string, unknown>): boolean {
+    for (const [, rawElement] of Object.entries(elementsJson)) {
+      if (!rawElement || typeof rawElement !== 'object') {
+        continue;
+      }
+      const parsed = ElementDataSchema.safeParse(rawElement);
+      if (!parsed.success) {
+        return false;
+      }
+    }
+    return true;
   }
 }

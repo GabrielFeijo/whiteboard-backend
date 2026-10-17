@@ -66,33 +66,64 @@ export class BoardAclService implements BoardAclResolver {
       throw new NotFoundException('Board not found');
     }
 
-    let userRole: Role | undefined = userId
-      ? this.resolveDirectMemberRole(board, userId)
-      : undefined;
-    let resolvedLinkId: string | undefined;
+    const directRole = userId ? this.resolveDirectMemberRole(board, userId) : undefined;
 
-    if (shareToken) {
-      const link = await this.validateShareLink(boardId, shareToken);
-      resolvedLinkId = link.id;
-      if (!userRole || (userRole === 'VIEWER' && link.role === 'EDITOR')) {
-        userRole = link.role;
-      }
-      if (userId && board.ownerId !== userId) {
-        await this.boardMembersRepository.enrollUser(boardId, userId, userRole);
-      }
-    } else if (!userRole) {
-      if (userId) {
-        throw new ForbiddenException('Access denied to board');
-      }
-      throw new UnauthorizedException('Authentication or share link required');
+    if (!shareToken) {
+      return this.handleDirectBoardAccess(board, directRole, userId);
+    }
+
+    return this.handleShareTokenBoardAccess(board, shareToken, directRole, userId);
+  }
+
+  private handleDirectBoardAccess(
+    board: BoardDetailRecord,
+    directRole?: Role,
+    userId?: string,
+  ): ResolvedBoardWithRole {
+    if (directRole) {
+      return {
+        ...board,
+        role: directRole,
+        currentUserRole: directRole,
+      };
+    }
+
+    if (userId) {
+      throw new ForbiddenException('Access denied to board');
+    }
+
+    throw new UnauthorizedException('Authentication or share link required');
+  }
+
+  private async handleShareTokenBoardAccess(
+    board: BoardDetailRecord,
+    shareToken: string,
+    directRole?: Role,
+    userId?: string,
+  ): Promise<ResolvedBoardWithRole> {
+    const link = await this.validateShareLink(board.id, shareToken);
+    const effectiveRole = this.resolveEffectiveRole(directRole, link.role);
+
+    if (userId && board.ownerId !== userId) {
+      await this.boardMembersRepository.enrollUser(board.id, userId, effectiveRole);
     }
 
     return {
       ...board,
-      role: userRole,
-      currentUserRole: userRole,
-      resolvedLinkId,
+      role: effectiveRole,
+      currentUserRole: effectiveRole,
+      resolvedLinkId: link.id,
     };
+  }
+
+  private resolveEffectiveRole(directRole?: Role, linkRole: Role = 'VIEWER'): Role {
+    if (directRole === 'OWNER') {
+      return 'OWNER';
+    }
+    if (linkRole === 'EDITOR' || directRole === 'EDITOR') {
+      return 'EDITOR';
+    }
+    return linkRole;
   }
 
   async resolveBoardAccess(

@@ -24,6 +24,13 @@ export interface IssuedWsTicketResult {
   linkId?: string;
 }
 
+interface ResolvedTicketIdentity {
+  role: Role;
+  userId: string;
+  userName: string;
+  linkId?: string;
+}
+
 @Injectable()
 export class BoardWsTicketService {
   constructor(
@@ -39,55 +46,21 @@ export class BoardWsTicketService {
     user?: { id: string; name: string },
     linkToken?: string,
   ): Promise<IssuedWsTicketResult> {
-    let resolvedRole: Role = 'VIEWER';
-    let resolvedUserId = user ? user.id : '';
-    let resolvedName = user ? user.name : 'Anonymous Guest';
-    let resolvedLinkId: string | undefined;
-
-    if (user) {
-      const board = await this.boardsRepository.findByIdForUserMember(boardId, user.id);
-
-      if (!board) {
-        throw new NotFoundException('Board not found');
-      }
-
-      const directRole = this.boardAclService.resolveDirectMemberRole(board, user.id);
-      if (directRole) {
-        resolvedRole = directRole;
-      } else if (!linkToken) {
-        throw new ForbiddenException('Access denied to board');
-      }
-    }
-
-    if (linkToken) {
-      const link = await this.boardAclService.validateShareLink(boardId, linkToken);
-      resolvedLinkId = link.id;
-
-      if (!user || resolvedRole === 'VIEWER' || link.role === 'EDITOR') {
-        if (resolvedRole !== 'OWNER') {
-          resolvedRole = link.role;
-        }
-      }
-
-      if (!user) {
-        resolvedUserId = `guest_${nanoid(8)}`;
-        resolvedName = `Guest ${resolvedUserId.slice(-4)}`;
-      } else if (resolvedRole !== 'OWNER') {
-        await this.boardMembersRepository.enrollUser(boardId, user.id, resolvedRole);
-      }
-    }
-
-    if (!resolvedUserId) {
+    if (!user && !linkToken) {
       throw new BadRequestException('Authentication or share link required');
     }
 
+    const identity = user
+      ? await this.resolveUserTicketIdentity(boardId, user, linkToken)
+      : await this.resolveGuestTicketIdentity(boardId, linkToken!);
+
     const ticket = `wst_${nanoid(32)}`;
     const ticketPayload = JSON.stringify({
-      userId: resolvedUserId,
-      userName: resolvedName,
+      userId: identity.userId,
+      userName: identity.userName,
       boardId,
-      role: resolvedRole,
-      ...(resolvedLinkId ? { linkId: resolvedLinkId } : {}),
+      role: identity.role,
+      ...(identity.linkId ? { linkId: identity.linkId } : {}),
     });
 
     const ttlSeconds =
@@ -97,11 +70,73 @@ export class BoardWsTicketService {
 
     return {
       ticket,
-      role: resolvedRole,
+      role: identity.role,
       boardId,
-      userId: resolvedUserId,
-      userName: resolvedName,
-      ...(resolvedLinkId ? { linkId: resolvedLinkId } : {}),
+      userId: identity.userId,
+      userName: identity.userName,
+      ...(identity.linkId ? { linkId: identity.linkId } : {}),
     };
+  }
+
+  private async resolveGuestTicketIdentity(
+    boardId: string,
+    linkToken: string,
+  ): Promise<ResolvedTicketIdentity> {
+    const link = await this.boardAclService.validateShareLink(boardId, linkToken);
+    const guestId = `guest_${nanoid(8)}`;
+    return {
+      role: link.role,
+      userId: guestId,
+      userName: `Guest ${guestId.slice(-4)}`,
+      linkId: link.id,
+    };
+  }
+
+  private async resolveUserTicketIdentity(
+    boardId: string,
+    user: { id: string; name: string },
+    linkToken?: string,
+  ): Promise<ResolvedTicketIdentity> {
+    const board = await this.boardsRepository.findByIdForUserMember(boardId, user.id);
+    if (!board) {
+      throw new NotFoundException('Board not found');
+    }
+
+    const directRole = this.boardAclService.resolveDirectMemberRole(board, user.id);
+    if (!directRole && !linkToken) {
+      throw new ForbiddenException('Access denied to board');
+    }
+
+    if (!linkToken) {
+      return {
+        role: directRole ?? 'VIEWER',
+        userId: user.id,
+        userName: user.name,
+      };
+    }
+
+    const link = await this.boardAclService.validateShareLink(boardId, linkToken);
+    const effectiveRole = this.computeEffectiveRole(directRole, link.role);
+
+    if (effectiveRole !== 'OWNER') {
+      await this.boardMembersRepository.enrollUser(boardId, user.id, effectiveRole);
+    }
+
+    return {
+      role: effectiveRole,
+      userId: user.id,
+      userName: user.name,
+      linkId: link.id,
+    };
+  }
+
+  private computeEffectiveRole(directRole?: Role, linkRole: Role = 'VIEWER'): Role {
+    if (directRole === 'OWNER') {
+      return 'OWNER';
+    }
+    if (linkRole === 'EDITOR' || directRole === 'EDITOR') {
+      return 'EDITOR';
+    }
+    return linkRole;
   }
 }
