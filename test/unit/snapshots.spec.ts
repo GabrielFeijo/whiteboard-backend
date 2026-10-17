@@ -1,10 +1,27 @@
-import { describe, expect, it, vi } from 'vitest';
 import { ForbiddenException, NotFoundException } from '@nestjs/common';
-import { BoardsService } from '../../src/boards/boards.service';
-import { PrismaService } from '../../src/prisma/prisma.service';
-import { RedisService } from '../../src/redis/redis.service';
+import { describe, expect, it, vi } from 'vitest';
+import { PrismaService } from '../../src/core/database/prisma.service';
+import { RedisService } from '../../src/core/redis/redis.service';
+import { BoardMembersRepository } from '../../src/modules/boards/members/board-members.repository';
+import { BoardsRepository } from '../../src/modules/boards/repositories/boards.repository';
+import { BoardAclService } from '../../src/modules/boards/services/board-acl.service';
+import { ShareLinksRepository } from '../../src/modules/boards/share-links/share-links.repository';
+import { BoardSnapshotsService } from '../../src/modules/boards/snapshots/board-snapshots.service';
+import { SnapshotsRepository } from '../../src/modules/boards/snapshots/snapshots.repository';
 
-describe('BoardsService - Snapshots & Restore', () => {
+function createSnapshotServiceWithMocks(
+  mockPrisma: PrismaService,
+  mockRedis: RedisService,
+): BoardSnapshotsService {
+  const boardsRepo = new BoardsRepository(mockPrisma);
+  const membersRepo = new BoardMembersRepository(mockPrisma);
+  const linksRepo = new ShareLinksRepository(mockPrisma);
+  const snapshotsRepo = new SnapshotsRepository(mockPrisma);
+  const aclService = new BoardAclService(boardsRepo, membersRepo, linksRepo);
+  return new BoardSnapshotsService(aclService, snapshotsRepo, mockRedis);
+}
+
+describe('BoardSnapshotsService - Snapshots & Restore', () => {
   it('lists historical snapshots for a board member', async () => {
     const mockPrisma = {
       board: {
@@ -32,7 +49,7 @@ describe('BoardsService - Snapshots & Restore', () => {
       client: { publish: vi.fn() },
     } as unknown as RedisService;
 
-    const service = new BoardsService(mockPrisma, mockRedis);
+    const service = createSnapshotServiceWithMocks(mockPrisma, mockRedis);
     const snapshots = await service.listSnapshots('b1', 'u2');
 
     expect(snapshots).toHaveLength(1);
@@ -51,7 +68,11 @@ describe('BoardsService - Snapshots & Restore', () => {
       },
     } as unknown as PrismaService;
 
-    const service = new BoardsService(mockPrisma, {} as any);
+    const mockRedis = {
+      client: { publish: vi.fn() },
+    } as unknown as RedisService;
+
+    const service = createSnapshotServiceWithMocks(mockPrisma, mockRedis);
 
     await expect(service.restoreSnapshot('b1', 's1', 'u3')).rejects.toThrow(ForbiddenException);
   });
@@ -94,7 +115,7 @@ describe('BoardsService - Snapshots & Restore', () => {
       },
     } as unknown as PrismaService;
 
-    const service = new BoardsService(mockPrisma, mockRedis);
+    const service = createSnapshotServiceWithMocks(mockPrisma, mockRedis);
     const res = await service.restoreSnapshot('b1', 's1', 'u1');
 
     expect(res.success).toBe(true);
@@ -116,7 +137,11 @@ describe('BoardsService - Snapshots & Restore', () => {
       },
     } as unknown as PrismaService;
 
-    const service = new BoardsService(mockPrisma, { client: { publish: vi.fn() } } as any);
+    const mockRedis = {
+      client: { publish: vi.fn() },
+    } as unknown as RedisService;
+
+    const service = createSnapshotServiceWithMocks(mockPrisma, mockRedis);
 
     await expect(service.restoreSnapshot('b1', 'nonexistent', 'u1')).rejects.toThrow(
       NotFoundException,

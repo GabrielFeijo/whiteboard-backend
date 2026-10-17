@@ -1,6 +1,6 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { IsEnum, IsInt, IsOptional, Max, Min } from 'class-validator';
-import { Role, ROLES } from '../../shared';
+import { Role, ROLES } from '../../../shared';
 
 export class CreateLinkDto {
   @ApiPropertyOptional({ enum: ROLES, default: 'VIEWER' })

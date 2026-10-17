@@ -1,12 +1,60 @@
-import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { ForbiddenException, UnauthorizedException } from '@nestjs/common';
 import * as crypto from 'node:crypto';
-import { BoardsService } from '../../src/boards/boards.service';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { PrismaService } from '../../src/core/database/prisma.service';
+import { RedisService } from '../../src/core/redis/redis.service';
+import { BoardMembersRepository } from '../../src/modules/boards/members/board-members.repository';
+import { BoardMembersService } from '../../src/modules/boards/members/board-members.service';
+import { BoardsRepository } from '../../src/modules/boards/repositories/boards.repository';
+import { BoardAclService } from '../../src/modules/boards/services/board-acl.service';
+import { BoardsService } from '../../src/modules/boards/services/boards.service';
+import { ShareLinksRepository } from '../../src/modules/boards/share-links/share-links.repository';
+import { SnapshotsRepository } from '../../src/modules/boards/snapshots/snapshots.repository';
+import { BoardWsTicketService } from '../../src/modules/boards/ws-ticket/board-ws-ticket.service';
+import { UsersRepository } from '../../src/modules/users/users.repository';
 
-describe('BoardsService', () => {
-  let service: BoardsService;
-  let mockPrisma: any;
-  let mockRedis: any;
+interface MockBoardsPrisma {
+  board: {
+    findMany: ReturnType<typeof vi.fn>;
+    findFirst: ReturnType<typeof vi.fn>;
+    create: ReturnType<typeof vi.fn>;
+    update: ReturnType<typeof vi.fn>;
+  };
+  boardMember: {
+    create: ReturnType<typeof vi.fn>;
+    upsert: ReturnType<typeof vi.fn>;
+    findMany: ReturnType<typeof vi.fn>;
+    delete: ReturnType<typeof vi.fn>;
+  };
+  user: {
+    findUnique: ReturnType<typeof vi.fn>;
+  };
+  shareLink: {
+    create: ReturnType<typeof vi.fn>;
+    findUnique: ReturnType<typeof vi.fn>;
+    findMany: ReturnType<typeof vi.fn>;
+    update: ReturnType<typeof vi.fn>;
+  };
+  snapshot: {
+    findFirst: ReturnType<typeof vi.fn>;
+    create: ReturnType<typeof vi.fn>;
+  };
+  $transaction: ReturnType<typeof vi.fn>;
+}
+
+interface MockBoardsRedis {
+  client: {
+    set: ReturnType<typeof vi.fn>;
+    publish: ReturnType<typeof vi.fn>;
+  };
+}
+
+describe('Boards Domain Services (BoardsService, BoardMembersService, BoardWsTicketService)', () => {
+  let boardsService: BoardsService;
+  let boardMembersService: BoardMembersService;
+  let boardWsTicketService: BoardWsTicketService;
+  let mockPrisma: MockBoardsPrisma;
+  let mockRedis: MockBoardsRedis;
 
   beforeEach(() => {
     mockPrisma = {
@@ -35,7 +83,7 @@ describe('BoardsService', () => {
         findFirst: vi.fn(),
         create: vi.fn(),
       },
-      $transaction: vi.fn((cb) => cb(mockPrisma)),
+      $transaction: vi.fn((cb: (tx: MockBoardsPrisma) => unknown) => cb(mockPrisma)),
     };
     mockRedis = {
       client: {
@@ -44,14 +92,41 @@ describe('BoardsService', () => {
       },
     };
 
-    service = new BoardsService(mockPrisma, mockRedis);
+    const prismaService = mockPrisma as unknown as PrismaService;
+    const redisService = mockRedis as unknown as RedisService;
+
+    const boardsRepository = new BoardsRepository(prismaService);
+    const boardMembersRepository = new BoardMembersRepository(prismaService);
+    const shareLinksRepository = new ShareLinksRepository(prismaService);
+    const snapshotsRepository = new SnapshotsRepository(prismaService);
+    const usersRepository = new UsersRepository(prismaService);
+
+    const boardAclService = new BoardAclService(
+      boardsRepository,
+      boardMembersRepository,
+      shareLinksRepository,
+    );
+
+    boardsService = new BoardsService(boardsRepository, snapshotsRepository, boardAclService);
+    boardMembersService = new BoardMembersService(
+      boardAclService,
+      boardMembersRepository,
+      usersRepository,
+      redisService,
+    );
+    boardWsTicketService = new BoardWsTicketService(
+      boardsRepository,
+      boardMembersRepository,
+      boardAclService,
+      redisService,
+    );
   });
 
   it('creates a board and associates the creator as OWNER', async () => {
     mockPrisma.board.create.mockResolvedValue({ id: 'b1', title: 'New Board', ownerId: 'u1' });
     mockPrisma.boardMember.create.mockResolvedValue({ boardId: 'b1', userId: 'u1', role: 'OWNER' });
 
-    const res = await service.create('u1', { title: 'New Board' });
+    const res = await boardsService.create('u1', { title: 'New Board' });
     expect(res.id).toBe('b1');
     expect(mockPrisma.board.create).toHaveBeenCalledOnce();
     expect(mockPrisma.boardMember.create).toHaveBeenCalledWith({
@@ -67,7 +142,7 @@ describe('BoardsService', () => {
       members: [{ userId: 'u1', role: 'OWNER' }],
     });
 
-    const res = await service.issueWsTicket('b1', { id: 'u1', name: 'User 1' });
+    const res = await boardWsTicketService.issueWsTicket('b1', { id: 'u1', name: 'User 1' });
     expect(res.ticket).toMatch(/^wst_/);
     expect(res.role).toBe('OWNER');
     expect(mockRedis.client.set).toHaveBeenCalledWith(
@@ -98,7 +173,7 @@ describe('BoardsService', () => {
       expiresAt: null,
     });
 
-    const res = await service.findOne('b1', 'u2', rawToken);
+    const res = await boardsService.findOne('b1', 'u2', rawToken);
     expect(res.role).toBe('EDITOR');
     expect(mockPrisma.boardMember.upsert).toHaveBeenCalledWith({
       where: { boardId_userId: { boardId: 'b1', userId: 'u2' } },
@@ -127,7 +202,7 @@ describe('BoardsService', () => {
       expiresAt: null,
     });
 
-    const res = await service.findOne('b1', undefined, rawToken);
+    const res = await boardsService.findOne('b1', undefined, rawToken);
     expect(res.role).toBe('VIEWER');
     expect(mockPrisma.boardMember.upsert).not.toHaveBeenCalled();
   });
@@ -140,7 +215,7 @@ describe('BoardsService', () => {
     });
     mockPrisma.shareLink.findUnique.mockResolvedValue(null);
 
-    await expect(service.findOne('b1', 'u2', 'invalid-token')).rejects.toThrow(
+    await expect(boardsService.findOne('b1', 'u2', 'invalid-token')).rejects.toThrow(
       ForbiddenException,
     );
   });
@@ -149,10 +224,10 @@ describe('BoardsService', () => {
     mockPrisma.board.findFirst.mockResolvedValue({
       id: 'b1',
       ownerId: 'u1',
-      members: [],
+      members: [{ userId: 'u3', role: 'EDITOR' }],
     });
 
-    await expect(service.findOne('b1', 'u2')).rejects.toThrow(ForbiddenException);
+    await expect(boardsService.findOne('b1', 'u2')).rejects.toThrow(ForbiddenException);
   });
 
   it('throws UnauthorizedException when guest accesses without token', async () => {
@@ -162,7 +237,7 @@ describe('BoardsService', () => {
       members: [],
     });
 
-    await expect(service.findOne('b1')).rejects.toThrow(UnauthorizedException);
+    await expect(boardsService.findOne('b1')).rejects.toThrow(UnauthorizedException);
   });
 
   it('adds a member directly by email when requested by owner', async () => {
@@ -175,15 +250,19 @@ describe('BoardsService', () => {
       id: 'u2',
       email: 'u2@example.com',
       name: 'User 2',
+      deletedAt: null,
     });
     mockPrisma.boardMember.upsert.mockResolvedValue({
       boardId: 'b1',
       userId: 'u2',
       role: 'EDITOR',
-      user: { id: 'u2', name: 'User 2', email: 'u2@example.com' },
+      user: { id: 'u2', name: 'User 2', email: 'u2@example.com', avatarUrl: null },
     });
 
-    const res = await service.addMember('b1', 'u1', { email: 'u2@example.com', role: 'EDITOR' });
+    const res = await boardMembersService.addMember('b1', 'u1', {
+      email: 'u2@example.com',
+      role: 'EDITOR',
+    });
     expect(res.userId).toBe('u2');
     expect(res.role).toBe('EDITOR');
     expect(mockPrisma.boardMember.upsert).toHaveBeenCalledWith({
@@ -207,21 +286,29 @@ describe('BoardsService', () => {
       { boardId: 'b1', userId: 'u2', role: 'EDITOR' },
     ]);
 
-    const res = await service.listMembers('b1', 'u1');
+    const res = await boardMembersService.listMembers('b1', 'u1');
     expect(res).toHaveLength(2);
   });
 
-  it('removes a member when requested by owner', async () => {
+  it('removes a member when requested by owner and publishes REMOVE_MEMBER on Redis ACL channel', async () => {
     mockPrisma.board.findFirst.mockResolvedValue({
       id: 'b1',
       ownerId: 'u1',
       members: [{ userId: 'u1', role: 'OWNER' }],
     });
-    mockPrisma.boardMember.delete.mockResolvedValue({});
+    mockPrisma.boardMember.delete.mockResolvedValue({
+      boardId: 'b1',
+      userId: 'u2',
+      role: 'EDITOR',
+    });
 
-    await service.removeMember('b1', 'u2', 'u1');
+    await boardMembersService.removeMember('b1', 'u2', 'u1');
     expect(mockPrisma.boardMember.delete).toHaveBeenCalledWith({
       where: { boardId_userId: { boardId: 'b1', userId: 'u2' } },
     });
+    expect(mockRedis.client.publish).toHaveBeenCalledWith(
+      'board:b1:acl',
+      JSON.stringify({ type: 'REMOVE_MEMBER', userId: 'u2' }),
+    );
   });
 });
