@@ -1,12 +1,14 @@
-import { describe, expect, it, vi } from 'vitest';
 import { ForbiddenException } from '@nestjs/common';
-import { AssetsService } from '../../src/assets/assets.service';
 import { ConfigService } from '@nestjs/config';
-import { BoardsService } from '../../src/boards/boards.service';
+import { describe, expect, it, vi } from 'vitest';
+import { Env } from '../../src/core/config/env';
+import { S3StorageService } from '../../src/core/storage/s3-storage.service';
+import { AssetsService } from '../../src/modules/assets/assets.service';
+import { BoardAclService } from '../../src/modules/boards/services/board-acl.service';
 
 describe('AssetsService', () => {
   const mockConfig = {
-    get: vi.fn((key: string) => {
+    get: vi.fn((key: keyof Env) => {
       const map: Record<string, string> = {
         S3_ENDPOINT: 'http://localhost:9000',
         S3_BUCKET: 'whiteboard-assets',
@@ -16,17 +18,19 @@ describe('AssetsService', () => {
       };
       return map[key];
     }),
-  } as unknown as ConfigService<any, true>;
+  } as unknown as ConfigService<Env, true>;
+
+  const s3Storage = new S3StorageService(mockConfig);
 
   it('rejects upload presign if user is a VIEWER', async () => {
-    const mockBoardsService = {
-      findOne: vi.fn().mockResolvedValue({
+    const mockBoardAcl = {
+      resolveBoardWithAccess: vi.fn().mockResolvedValue({
         id: 'board-1',
         currentUserRole: 'VIEWER',
       }),
-    } as unknown as BoardsService;
+    } as unknown as BoardAclService;
 
-    const service = new AssetsService(mockConfig, mockBoardsService);
+    const service = new AssetsService(s3Storage, mockBoardAcl);
 
     await expect(
       service.createPresignedUploadUrl('board-1', 'user-viewer', {
@@ -37,18 +41,18 @@ describe('AssetsService', () => {
     ).rejects.toThrow(ForbiddenException);
   });
 
-  it('generates presigned upload url and public asset url for EDITOR', async () => {
-    const mockBoardsService = {
-      findOne: vi.fn().mockResolvedValue({
+  it('generates presigned upload url and public asset url for EDITOR and ignores malicious filename extensions', async () => {
+    const mockBoardAcl = {
+      resolveBoardWithAccess: vi.fn().mockResolvedValue({
         id: 'board-1',
         currentUserRole: 'EDITOR',
       }),
-    } as unknown as BoardsService;
+    } as unknown as BoardAclService;
 
-    const service = new AssetsService(mockConfig, mockBoardsService);
+    const service = new AssetsService(s3Storage, mockBoardAcl);
 
     const result = await service.createPresignedUploadUrl('board-1', 'user-editor', {
-      filename: 'photo.jpg',
+      filename: 'exploit.html',
       contentType: 'image/jpeg',
       size: 50000,
     });
