@@ -2,26 +2,26 @@ import { Injectable } from '@nestjs/common';
 
 @Injectable()
 export class MetricsService {
-  private httpRequestsTotal = new Map<string, number>();
+  private readonly httpRequestsTotal = new Map<string, number>();
   private activeRooms = 0;
   private activeConnections = 0;
   private syncMessagesTotal = 0;
 
-  incrementHttpRequest(method: string, status: number) {
+  incrementHttpRequest(method: string, status: number): void {
     const key = `method="${method}",status="${status}"`;
-    const current = this.httpRequestsTotal.get(key) || 0;
+    const current = this.httpRequestsTotal.get(key) ?? 0;
     this.httpRequestsTotal.set(key, current + 1);
   }
 
-  setActiveRooms(count: number) {
+  setActiveRooms(count: number): void {
     this.activeRooms = Math.max(0, count);
   }
 
-  setActiveConnections(count: number) {
+  setActiveConnections(count: number): void {
     this.activeConnections = Math.max(0, count);
   }
 
-  incrementSyncMessages() {
+  incrementSyncMessages(): void {
     this.syncMessagesTotal += 1;
   }
 

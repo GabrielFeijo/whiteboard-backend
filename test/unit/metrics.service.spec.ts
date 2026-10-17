@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { MetricsService } from '../../src/metrics/metrics.service';
+import { MetricsService } from '../../src/core/observability/metrics/metrics.service';
 
 describe('MetricsService', () => {
   it('renders prometheus text metrics with initial zero counters', () => {

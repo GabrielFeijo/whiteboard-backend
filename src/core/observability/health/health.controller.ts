@@ -1,8 +1,13 @@
 import { Controller, Get, Inject } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
-import { HealthCheck, HealthCheckService, HealthIndicatorService } from '@nestjs/terminus';
-import { PrismaService } from '../prisma/prisma.service';
-import { RedisService } from '../redis/redis.service';
+import {
+  HealthCheck,
+  HealthCheckResult,
+  HealthCheckService,
+  HealthIndicatorService,
+} from '@nestjs/terminus';
+import { PrismaService } from '../../database/prisma.service';
+import { RedisService } from '../../redis/redis.service';
 
 @ApiTags('health')
 @Controller('health')
@@ -15,13 +20,13 @@ export class HealthController {
   ) {}
 
   @Get('live')
-  live() {
+  live(): { status: string } {
     return { status: 'ok' };
   }
 
   @Get('ready')
   @HealthCheck()
-  ready() {
+  ready(): Promise<HealthCheckResult> {
     return this.health.check([
       async () => {
         const i = this.indicator.check('postgres');
@@ -29,7 +34,7 @@ export class HealthController {
           await this.prisma.$queryRaw`SELECT 1`;
           return i.up();
         } catch (e) {
-          return i.down({ message: (e as Error).message });
+          return i.down({ message: e instanceof Error ? e.message : 'Postgres check failed' });
         }
       },
       async () => {
@@ -38,7 +43,7 @@ export class HealthController {
           await this.redis.ping();
           return i.up();
         } catch (e) {
-          return i.down({ message: (e as Error).message });
+          return i.down({ message: e instanceof Error ? e.message : 'Redis check failed' });
         }
       },
     ]);
