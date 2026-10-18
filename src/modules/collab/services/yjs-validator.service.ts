@@ -19,6 +19,32 @@ export interface SyncValidationResult {
   reason?: SyncValidationFailureReason;
 }
 
+function extractModifiedElementId(
+  target: unknown,
+  rootElements: Y.Map<Y.Map<unknown>>,
+): string | null {
+  if (!(target instanceof Y.Map) || target === rootElements) {
+    return null;
+  }
+  let current: Y.Map<unknown> | null = target;
+  while (current && current.parent !== rootElements && current.parent instanceof Y.Map) {
+    current = current.parent;
+  }
+  if (!current || current.parent !== rootElements) {
+    return null;
+  }
+  const id = current.get('id');
+  return typeof id === 'string' ? id : null;
+}
+
+function isValidElementMap(elementMap: unknown): boolean {
+  if (!(elementMap instanceof Y.Map)) {
+    return false;
+  }
+  const rawElement = elementMap.toJSON();
+  return ElementDataSchema.safeParse(rawElement).success;
+}
+
 @Injectable()
 export class YjsValidatorService {
   validateSyncUpdate(
@@ -40,73 +66,22 @@ export class YjsValidatorService {
         Y.applyUpdate(shadowDoc, currentState);
       }
 
-      const shadowRoots = getDocRoots(shadowDoc);
-      let metaModified = false;
-      const modifiedElementKeys = new Set<string>();
-
-      const metaDeepObserver = () => {
-        metaModified = true;
-      };
-      shadowRoots.meta.observeDeep(metaDeepObserver);
-
-      const elementsObserver: Parameters<typeof shadowRoots.elements.observe>[0] = (event) => {
-        event.keys.forEach((_change, key) => {
-          modifiedElementKeys.add(key);
-        });
-      };
-      shadowRoots.elements.observe(elementsObserver);
-
-      const elementsDeepObserver: Parameters<typeof shadowRoots.elements.observeDeep>[0] = (
-        events,
-      ) => {
-        for (const ev of events) {
-          if (ev.target !== shadowRoots.elements && ev.target instanceof Y.Map) {
-            let curr: Y.Map<unknown> | null = ev.target;
-            while (curr && curr.parent !== shadowRoots.elements && curr.parent instanceof Y.Map) {
-              curr = curr.parent;
-            }
-            if (curr && curr.parent === shadowRoots.elements) {
-              const id = curr.get('id');
-              if (typeof id === 'string') {
-                modifiedElementKeys.add(id);
-              }
-            }
-          }
-        }
-      };
-      shadowRoots.elements.observeDeep(elementsDeepObserver);
-
-      try {
-        const decoder = decoding.createDecoder(syncPayloadAfterMsgType);
-        const dummyEncoder = encoding.createEncoder();
-        syncProtocol.readSyncMessage(decoder, dummyEncoder, shadowDoc, 'validator');
-      } finally {
-        shadowRoots.meta.unobserveDeep(metaDeepObserver);
-        shadowRoots.elements.unobserve(elementsObserver);
-        shadowRoots.elements.unobserveDeep(elementsDeepObserver);
-      }
+      const { metaModified, modifiedElementKeys } = this.applyAndTrackMutations(
+        shadowDoc,
+        syncPayloadAfterMsgType,
+      );
 
       if (role !== Role.OWNER && metaModified) {
         return { valid: false, reason: SyncValidationFailureReason.META_FORBIDDEN };
       }
 
+      const shadowRoots = getDocRoots(shadowDoc);
       if (shadowRoots.elements.size > LIMITS.MAX_ELEMENTS) {
         return { valid: false, reason: SyncValidationFailureReason.ELEMENT_QUOTA_EXCEEDED };
       }
 
-      for (const key of modifiedElementKeys) {
-        const elementMap = shadowRoots.elements.get(key);
-        if (!elementMap) {
-          continue;
-        }
-        if (!(elementMap instanceof Y.Map)) {
-          return { valid: false, reason: SyncValidationFailureReason.INVALID_ELEMENT_SCHEMA };
-        }
-        const rawElement = elementMap.toJSON();
-        const parsed = ElementDataSchema.safeParse(rawElement);
-        if (!parsed.success) {
-          return { valid: false, reason: SyncValidationFailureReason.INVALID_ELEMENT_SCHEMA };
-        }
+      if (!this.areModifiedElementsValid(shadowRoots.elements, modifiedElementKeys)) {
+        return { valid: false, reason: SyncValidationFailureReason.INVALID_ELEMENT_SCHEMA };
       }
 
       return { valid: true };
@@ -115,5 +90,61 @@ export class YjsValidatorService {
         shadowDoc.destroy();
       }
     }
+  }
+
+  private applyAndTrackMutations(
+    shadowDoc: Y.Doc,
+    syncPayloadAfterMsgType: Uint8Array,
+  ): { metaModified: boolean; modifiedElementKeys: Set<string> } {
+    const shadowRoots = getDocRoots(shadowDoc);
+    let metaModified = false;
+    const modifiedElementKeys = new Set<string>();
+
+    const metaDeepObserver = () => {
+      metaModified = true;
+    };
+    const elementsObserver: Parameters<typeof shadowRoots.elements.observe>[0] = (event) => {
+      event.keys.forEach((_change, key) => modifiedElementKeys.add(key));
+    };
+    const elementsDeepObserver: Parameters<typeof shadowRoots.elements.observeDeep>[0] = (events) => {
+      for (const ev of events) {
+        const id = extractModifiedElementId(ev.target, shadowRoots.elements);
+        if (id) {
+          modifiedElementKeys.add(id);
+        }
+      }
+    };
+
+    shadowRoots.meta.observeDeep(metaDeepObserver);
+    shadowRoots.elements.observe(elementsObserver);
+    shadowRoots.elements.observeDeep(elementsDeepObserver);
+
+    try {
+      const decoder = decoding.createDecoder(syncPayloadAfterMsgType);
+      const dummyEncoder = encoding.createEncoder();
+      syncProtocol.readSyncMessage(decoder, dummyEncoder, shadowDoc, 'validator');
+    } finally {
+      shadowRoots.meta.unobserveDeep(metaDeepObserver);
+      shadowRoots.elements.unobserve(elementsObserver);
+      shadowRoots.elements.unobserveDeep(elementsDeepObserver);
+    }
+
+    return { metaModified, modifiedElementKeys };
+  }
+
+  private areModifiedElementsValid(
+    elements: Y.Map<Y.Map<unknown>>,
+    modifiedElementKeys: Set<string>,
+  ): boolean {
+    for (const key of modifiedElementKeys) {
+      const elementMap = elements.get(key);
+      if (!elementMap) {
+        continue;
+      }
+      if (!isValidElementMap(elementMap)) {
+        return false;
+      }
+    }
+    return true;
   }
 }
