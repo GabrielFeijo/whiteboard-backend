@@ -13,8 +13,6 @@ export const ElementType = {
   IMAGE: 'image',
   GROUP: 'group',
 } as const;
-export type ElementType = (typeof ElementType)[keyof typeof ElementType];
-
 export const ELEMENT_TYPES = [
   ElementType.RECT,
   ElementType.ELLIPSE,
@@ -27,6 +25,7 @@ export const ELEMENT_TYPES = [
   ElementType.IMAGE,
   ElementType.GROUP,
 ] as const;
+export type ElementType = (typeof ELEMENT_TYPES)[number];
 
 const finite = z.number().finite();
 
@@ -43,16 +42,14 @@ export const AnchorPoint = {
   LEFT: 'left',
   RIGHT: 'right',
 } as const;
-export type AnchorPoint = (typeof AnchorPoint)[keyof typeof AnchorPoint];
-
 export const ANCHOR_POINTS = [
   AnchorPoint.TOP,
   AnchorPoint.BOTTOM,
   AnchorPoint.LEFT,
   AnchorPoint.RIGHT,
 ] as const;
-
 export const AnchorPointSchema = z.enum(ANCHOR_POINTS);
+export type AnchorPoint = (typeof ANCHOR_POINTS)[number];
 
 export const ArrowBindingSchema = z.object({
   elementId: z.string().max(64),
@@ -104,3 +101,12 @@ export function getDocRoots(doc: Y.Doc) {
     comments: doc.getArray('comments'),
   };
 }
+
+export function isStructuralElement(el: { type: ElementType }): boolean {
+  return (
+    el.type !== ElementType.ARROW &&
+    el.type !== ElementType.LINE &&
+    el.type !== ElementType.FREEHAND
+  );
+}
+
