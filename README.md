@@ -12,6 +12,13 @@
 
 ---
 
+<div align="center">
+  <img src="docs/images/backend-architecture-preview.png" alt="Whiteboard Backend - Arquitetura de Microsserviços & Collab" width="100%" />
+  <p><em>Arquitetura dual-entrypoint (API REST :3001 & Collab WS :3002), Shadow Document autoritativo e persistência distribuída</em></p>
+</div>
+
+---
+
 ## 📋 Sobre o Projeto
 
 O **Whiteboard Backend** é o núcleo de processamento e dados da solução de quadro branco colaborativo. Ele adota uma arquitetura de inicialização dupla (**dual-entrypoint**) em um único codebase:
