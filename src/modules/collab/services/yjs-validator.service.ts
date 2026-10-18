@@ -25,26 +25,68 @@ export class YjsValidatorService {
     currentDoc: Y.Doc,
     syncPayloadAfterMsgType: Uint8Array,
     role: Role,
+    shadowDocMirror?: Y.Doc,
   ): SyncValidationResult {
     if (role === Role.VIEWER) {
       return { valid: false, reason: SyncValidationFailureReason.VIEWER_READ_ONLY };
     }
 
-    const shadowDoc = new Y.Doc();
+    const shadowDoc = shadowDocMirror ?? new Y.Doc();
+    const shouldDestroy = !shadowDocMirror;
+
     try {
-      const currentState = Y.encodeStateAsUpdate(currentDoc);
-      Y.applyUpdate(shadowDoc, currentState);
-
-      const currentRoots = getDocRoots(currentDoc);
-      const beforeMetaJson = JSON.stringify(currentRoots.meta.toJSON());
-
-      const decoder = decoding.createDecoder(syncPayloadAfterMsgType);
-      const dummyEncoder = encoding.createEncoder();
-      syncProtocol.readSyncMessage(decoder, dummyEncoder, shadowDoc, 'validator');
+      if (shouldDestroy) {
+        const currentState = Y.encodeStateAsUpdate(currentDoc);
+        Y.applyUpdate(shadowDoc, currentState);
+      }
 
       const shadowRoots = getDocRoots(shadowDoc);
+      let metaModified = false;
+      const modifiedElementKeys = new Set<string>();
 
-      if (role !== Role.OWNER && this.isMetaModified(beforeMetaJson, shadowRoots)) {
+      const metaDeepObserver = () => {
+        metaModified = true;
+      };
+      shadowRoots.meta.observeDeep(metaDeepObserver);
+
+      const elementsObserver: Parameters<typeof shadowRoots.elements.observe>[0] = (event) => {
+        event.keys.forEach((_change, key) => {
+          modifiedElementKeys.add(key);
+        });
+      };
+      shadowRoots.elements.observe(elementsObserver);
+
+      const elementsDeepObserver: Parameters<typeof shadowRoots.elements.observeDeep>[0] = (
+        events,
+      ) => {
+        for (const ev of events) {
+          if (ev.target !== shadowRoots.elements && ev.target instanceof Y.Map) {
+            let curr: Y.Map<unknown> | null = ev.target;
+            while (curr && curr.parent !== shadowRoots.elements && curr.parent instanceof Y.Map) {
+              curr = curr.parent;
+            }
+            if (curr && curr.parent === shadowRoots.elements) {
+              const id = curr.get('id');
+              if (typeof id === 'string') {
+                modifiedElementKeys.add(id);
+              }
+            }
+          }
+        }
+      };
+      shadowRoots.elements.observeDeep(elementsDeepObserver);
+
+      try {
+        const decoder = decoding.createDecoder(syncPayloadAfterMsgType);
+        const dummyEncoder = encoding.createEncoder();
+        syncProtocol.readSyncMessage(decoder, dummyEncoder, shadowDoc, 'validator');
+      } finally {
+        shadowRoots.meta.unobserveDeep(metaDeepObserver);
+        shadowRoots.elements.unobserve(elementsObserver);
+        shadowRoots.elements.unobserveDeep(elementsDeepObserver);
+      }
+
+      if (role !== Role.OWNER && metaModified) {
         return { valid: false, reason: SyncValidationFailureReason.META_FORBIDDEN };
       }
 
@@ -52,32 +94,26 @@ export class YjsValidatorService {
         return { valid: false, reason: SyncValidationFailureReason.ELEMENT_QUOTA_EXCEEDED };
       }
 
-      const elementsJson = shadowRoots.elements.toJSON() as Record<string, unknown>;
-      if (!this.areAllElementsValid(elementsJson)) {
-        return { valid: false, reason: SyncValidationFailureReason.INVALID_ELEMENT_SCHEMA };
+      for (const key of modifiedElementKeys) {
+        const elementMap = shadowRoots.elements.get(key);
+        if (!elementMap) {
+          continue;
+        }
+        if (!(elementMap instanceof Y.Map)) {
+          return { valid: false, reason: SyncValidationFailureReason.INVALID_ELEMENT_SCHEMA };
+        }
+        const rawElement = elementMap.toJSON();
+        const parsed = ElementDataSchema.safeParse(rawElement);
+        if (!parsed.success) {
+          return { valid: false, reason: SyncValidationFailureReason.INVALID_ELEMENT_SCHEMA };
+        }
       }
 
       return { valid: true };
     } finally {
-      shadowDoc.destroy();
-    }
-  }
-
-  private isMetaModified(beforeMetaJson: string, shadowRoots: { meta: Y.Map<unknown> }): boolean {
-    const afterMetaJson = JSON.stringify(shadowRoots.meta.toJSON());
-    return beforeMetaJson !== afterMetaJson;
-  }
-
-  private areAllElementsValid(elementsJson: Record<string, unknown>): boolean {
-    for (const [, rawElement] of Object.entries(elementsJson)) {
-      if (!rawElement || typeof rawElement !== 'object') {
-        continue;
-      }
-      const parsed = ElementDataSchema.safeParse(rawElement);
-      if (!parsed.success) {
-        return false;
+      if (shouldDestroy) {
+        shadowDoc.destroy();
       }
     }
-    return true;
   }
 }

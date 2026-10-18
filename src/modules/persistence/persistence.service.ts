@@ -1,4 +1,5 @@
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import * as Y from 'yjs';
 import { PrismaService } from '../../core/database/prisma.service';
 import { SnapshotReason } from '../../shared';
 
@@ -47,10 +48,13 @@ export class PersistenceService implements OnModuleInit, OnModuleDestroy {
     if (!updates || updates.length === 0) return;
     this.buffer.delete(boardId);
 
-    const data = updates.map((u) => ({
-      boardId,
-      data: Buffer.from(u),
-    }));
+    const merged = updates.length === 1 ? updates[0]! : Y.mergeUpdates(updates);
+    const data = [
+      {
+        boardId,
+        data: Buffer.from(merged),
+      },
+    ];
 
     try {
       await this.prisma.docUpdate.createMany({ data });

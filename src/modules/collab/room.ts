@@ -32,6 +32,7 @@ export class Room {
   private snapshotInterval: NodeJS.Timeout | null = null;
   private dirtySinceLastSnapshot = false;
   private readonly validator: YjsValidatorService;
+  private shadowDoc: Y.Doc;
 
   constructor(
     readonly boardId: string,
@@ -42,10 +43,19 @@ export class Room {
     this.validator = validator ?? new YjsValidatorService();
     this.doc = new Y.Doc();
     this.doc.gc = true;
+    this.shadowDoc = new Y.Doc();
+    this.shadowDoc.gc = true;
+    const initialDocState = Y.encodeStateAsUpdate(this.doc);
+    if (initialDocState.length > 0) {
+      Y.applyUpdate(this.shadowDoc, initialDocState);
+    }
     this.awareness = new awarenessProtocol.Awareness(this.doc);
 
     this.updateHandler = (update: Uint8Array, origin: unknown) => {
       this.dirtySinceLastSnapshot = true;
+      if (!this.clients.has(origin as WebSocket)) {
+        Y.applyUpdate(this.shadowDoc, update);
+      }
       const encoder = encoding.createEncoder();
       encoding.writeVarUint(encoder, MSG.SYNC);
       syncProtocol.writeUpdate(encoder, update);
@@ -190,9 +200,15 @@ export class Room {
     }
 
     const syncPayloadSlice = data.subarray(syncPayloadOffset);
-    const validation = this.validator.validateSyncUpdate(this.doc, syncPayloadSlice, meta.role);
+    const validation = this.validator.validateSyncUpdate(
+      this.doc,
+      syncPayloadSlice,
+      meta.role,
+      this.shadowDoc,
+    );
 
     if (!validation.valid) {
+      this.recreateShadowDoc();
       this.handleValidationFailure(ws, meta, validation.reason);
       return;
     }
@@ -201,6 +217,16 @@ export class Room {
     encoding.writeVarUint(encoder, MSG.SYNC);
     syncProtocol.readSyncMessage(decoder, encoder, this.doc, ws);
     this.sendEncodedReply(ws, encoder);
+  }
+
+  private recreateShadowDoc(): void {
+    this.shadowDoc.destroy();
+    this.shadowDoc = new Y.Doc();
+    this.shadowDoc.gc = true;
+    const current = Y.encodeStateAsUpdate(this.doc);
+    if (current.length > 0) {
+      Y.applyUpdate(this.shadowDoc, current);
+    }
   }
 
   private isElementLimitExceeded(): boolean {
@@ -318,6 +344,7 @@ export class Room {
     }, 'restore');
 
     Y.applyUpdate(this.doc, snapshotData, 'restore');
+    this.recreateShadowDoc();
 
     const encoder = encoding.createEncoder();
     encoding.writeVarUint(encoder, MSG.SYNC);
@@ -338,6 +365,7 @@ export class Room {
     }
     this.doc.off('update', this.updateHandler);
     this.awareness.off('update', this.awarenessHandler);
+    this.shadowDoc.destroy();
     this.doc.destroy();
   }
 }
