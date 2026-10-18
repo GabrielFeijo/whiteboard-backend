@@ -1,10 +1,23 @@
-import { Body, Controller, Param, Post, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  Post,
+  Query,
+  Req,
+  Res,
+  UseGuards,
+} from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
+import { Response } from 'express';
 import { RequireBoardRoles } from '../../common/decorators/board-roles.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { BoardAccessGuard } from '../../common/guards/board-access.guard';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+import { OptionalJwtAuthGuard } from '../../common/guards/optional-jwt-auth.guard';
 import { ParseCuidPipe } from '../../common/pipes/parse-cuid.pipe';
+import { AuthenticatedRequest } from '../../common/types/express-request.interface';
 import { PresignedUploadResult } from '../../core/storage/s3-storage.service';
 import { Role } from '../../shared';
 import { AssetsService } from './assets.service';
@@ -30,5 +43,46 @@ export class AssetsController {
     @Body() dto: PresignAssetDto,
   ): Promise<PresignedUploadResult> {
     return this.assetsService.createPresignedUploadUrl(boardId, userId, dto);
+  }
+
+  @Get(':assetKey/url')
+  @UseGuards(OptionalJwtAuthGuard)
+  @ApiOperation({ summary: 'Generate a presigned S3/MinIO GET read URL for an asset' })
+  @ApiResponse({ status: 200, description: 'Presigned GET URL generated successfully' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({ status: 403, description: 'Forbidden' })
+  @ApiResponse({ status: 404, description: 'Board not found' })
+  async getReadUrl(
+    @Param('boardId', ParseCuidPipe) boardId: string,
+    @Param('assetKey') assetKey: string,
+    @Req() req: AuthenticatedRequest,
+    @Query('token') shareToken?: string,
+  ): Promise<{ readUrl: string; expiresIn: number }> {
+    return this.assetsService.createPresignedDownloadUrl(
+      boardId,
+      req.user?.id,
+      assetKey,
+      shareToken,
+    );
+  }
+
+  @Get(':assetKey/view')
+  @UseGuards(OptionalJwtAuthGuard)
+  @ApiOperation({ summary: 'Redirect directly to presigned S3 GET URL for authorized viewing' })
+  @ApiResponse({ status: 302, description: 'Redirected to presigned S3 URL' })
+  async viewAsset(
+    @Param('boardId', ParseCuidPipe) boardId: string,
+    @Param('assetKey') assetKey: string,
+    @Req() req: AuthenticatedRequest,
+    @Res() res: Response,
+    @Query('token') shareToken?: string,
+  ): Promise<void> {
+    const { readUrl } = await this.assetsService.createPresignedDownloadUrl(
+      boardId,
+      req.user?.id,
+      assetKey,
+      shareToken,
+    );
+    res.redirect(302, readUrl);
   }
 }

@@ -1,4 +1,4 @@
-import { ForbiddenException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { describe, expect, it, vi } from 'vitest';
 import { Env } from '../../src/core/config/env';
@@ -61,7 +61,45 @@ describe('AssetsService', () => {
     expect(result.uploadUrl).toContain('whiteboard-assets');
     expect(result.assetUrl).toBeDefined();
     expect(result.assetUrl).toContain('http://localhost:9000/whiteboard-assets/boards/board-1/');
+    expect(result.readUrl).toBeDefined();
     expect(result.key).toMatch(/^boards\/board-1\/.+\.jpg$/);
     expect(result.expiresIn).toBe(300);
+  });
+
+  it('generates presigned download url for authorized board member', async () => {
+    const mockBoardAcl = {
+      resolveBoardWithAccess: vi.fn().mockResolvedValue({
+        id: 'board-1',
+        currentUserRole: 'VIEWER',
+      }),
+    } as unknown as BoardAclService;
+
+    const service = new AssetsService(s3Storage, mockBoardAcl);
+
+    const result = await service.createPresignedDownloadUrl(
+      'board-1',
+      'user-viewer',
+      'asset-uuid-123.png',
+    );
+
+    expect(result.readUrl).toBeDefined();
+    expect(result.readUrl).toContain('whiteboard-assets');
+    expect(result.readUrl).toContain('boards/board-1/asset-uuid-123.png');
+    expect(result.expiresIn).toBe(900);
+  });
+
+  it('rejects path traversal in asset key when generating download url', async () => {
+    const mockBoardAcl = {
+      resolveBoardWithAccess: vi.fn().mockResolvedValue({
+        id: 'board-1',
+        currentUserRole: 'VIEWER',
+      }),
+    } as unknown as BoardAclService;
+
+    const service = new AssetsService(s3Storage, mockBoardAcl);
+
+    await expect(
+      service.createPresignedDownloadUrl('board-1', 'user-viewer', '../secret-board/asset.png'),
+    ).rejects.toThrow(BadRequestException);
   });
 });

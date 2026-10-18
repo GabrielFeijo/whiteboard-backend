@@ -24,8 +24,8 @@ export const EnvSchema = z.object({
   API_PORT: z.coerce.number().int().default(3001),
   COLLAB_PORT: z.coerce.number().int().default(3002),
 
-  DATABASE_URL: z.string().url(),
-  REDIS_URL: z.string().url(),
+  DATABASE_URL: z.url(),
+  REDIS_URL: z.url(),
 
   JWT_ACCESS_SECRET: z.string().min(32, 'JWT_ACCESS_SECRET deve ter ao menos 32 caracteres'),
   JWT_ACCESS_TTL: z.coerce.number().int().positive().default(900),
@@ -36,8 +36,8 @@ export const EnvSchema = z.object({
   WS_TICKET_TTL: z.coerce.number().int().positive().default(30),
   ALLOWED_ORIGINS: csv('http://localhost:3000'),
 
-  S3_ENDPOINT: z.string().url(),
-  S3_PUBLIC_ENDPOINT: z.string().url().optional(),
+  S3_ENDPOINT: z.url(),
+  S3_PUBLIC_ENDPOINT: z.url().optional(),
   S3_BUCKET: z.string().min(1),
   S3_ACCESS_KEY: z.string().min(1),
   S3_SECRET_KEY: z.string().min(1),

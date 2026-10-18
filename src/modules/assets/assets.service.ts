@@ -1,4 +1,4 @@
-import { ForbiddenException, Injectable } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable } from '@nestjs/common';
 import { nanoid } from 'nanoid';
 import { PresignedUploadResult, S3StorageService } from '../../core/storage/s3-storage.service';
 import { Role } from '../../shared';
@@ -35,5 +35,25 @@ export class AssetsService {
       contentLength: dto.size,
       expiresInSeconds: 300,
     });
+  }
+
+  async createPresignedDownloadUrl(
+    boardId: string,
+    userId: string | undefined,
+    rawKey: string,
+    shareToken?: string,
+  ): Promise<{ readUrl: string; expiresIn: number }> {
+    await this.boardAclService.resolveBoardWithAccess(boardId, userId, shareToken);
+
+    const safeFilename = rawKey.replace(/^\/+/, '').replace(`boards/${boardId}/`, '');
+    if (!/^[a-zA-Z0-9_.-]+$/.test(safeFilename) || safeFilename.includes('..')) {
+      throw new BadRequestException('Invalid asset key');
+    }
+
+    const key = `boards/${boardId}/${safeFilename}`;
+    const expiresIn = 900;
+    const readUrl = await this.s3Storage.createPresignedGetUrl(key, expiresIn);
+
+    return { readUrl, expiresIn };
   }
 }
