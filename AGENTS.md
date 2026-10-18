@@ -1,16 +1,18 @@
-# Agent Guidelines — Backend
+# Agent Guidelines — Backend Submodule
 
-This document guides AI agents working inside the `backend/` submodule.
+This document establishes operational standards, architectural invariants, code quality rules, and commit conventions for all human engineers and autonomous AI agents working inside the `backend/` submodule.
 
-## Architecture & Module Layout
+---
 
-The backend is built with NestJS 11 and TypeScript, designed with dual independent entrypoints to separate stateless REST API concerns from stateful real-time collaboration.
+## 🏛️ Architecture & Module Breakdown
 
-### Entrypoints
+The backend is built with **NestJS 11** and **TypeScript**, engineered with a **dual independent entrypoint** architecture to strictly isolate stateless REST API concerns from stateful real-time collaboration.
+
+### Dual Entrypoints
 - `src/main.api.ts`: REST API entrypoint running on port 3001. Stateless. Exposes Swagger at `/v1/docs` and OpenAPI JSON at `/v1/docs-json`.
-- `src/main.collab.ts`: WebSocket collaboration entrypoint running on port 3002. Stateful per active board room, validates binary Yjs updates against a shadow doc, and manages room lifecycles.
+- `src/main.collab.ts`: WebSocket collaboration entrypoint running on port 3002. Stateful per active board room, validates binary Yjs updates against an authoritative shadow doc, and coordinates multi-pod replication via Redis.
 
-### Modules Breakdown
+### Domain Modules
 - `src/modules/auth/`:
   - Password hashing with Argon2id.
   - 15-minute access JWTs.
@@ -47,36 +49,67 @@ The backend is built with NestJS 11 and TypeScript, designed with dual independe
 
 ---
 
-## Critical Backend Rules & Invariants
+## 🚫 Prohibited Comments & Documentation Standards
 
-### 1. Dual Entrypoint Boundary
-- **NEVER add in-memory board state to `main.api.ts`.**
-- **NEVER expose HTTP REST endpoints on `main.collab.ts`.**
-- The REST API must remain 100% stateless so it can be horizontally scaled behind a load balancer without sticky sessions.
-- The Collab Server is stateful and uses Redis Pub/Sub to synchronize across pods.
+1. **No AI/Model Signatures**: Never add comments stating that code was generated, modified, or recommended by an AI assistant.
+2. **No Dead Commented Code**: Never leave unused or commented-out code blocks. Use Git version control for history.
+3. **No Redundant Comments**: Do not write comments that merely rephrase the immediate code statement (e.g., `// Save user to database` before `await this.prisma.user.create(...)`).
+4. **No Unanchored TODOs**: Never leave untracked `// TODO` comments.
+5. **Language Requirement**: All comments, docstrings, and commits must be authored in **English**.
 
-### 2. Contract Authority
-- `src/shared/` is the authoritative source for contracts between backend and frontend.
-- When updating elements, schemas, or protocol messages:
-  1. Modify files in `src/shared/`.
-  2. If protocol fixtures or schema changes require updated fixtures, run:
-     `npx tsx scripts/gen-fixtures.ts`
-  3. Propagate changes to frontend using `make sync-shared` from the workspace root.
-  4. Ensure `test/contract/shared-contract.spec.ts` passes.
+---
 
-### 3. Database & Migrations
-- Apply schema changes via `prisma/schema.prisma`.
-- Generate Prisma Client: `npm run prisma:generate`.
-- Create migrations: `npm run prisma:migrate` (requires PostgreSQL running via `make deps`).
-- Seed development data: `npm run db:seed`.
-- When deleting boards or users, ensure foreign key cascades and S3 asset cleanup are handled.
+## 🛑 Prohibited Backend Code Smells & Antipatterns
 
-### 4. Verification Workflow
-- Unit & contract tests: `npm run test` (runs with Vitest).
-- Integration tests: `npm run test:int` (uses Testcontainers; requires Docker daemon).
-- Type checking: `npm run typecheck` (`tsc --noEmit`).
-- Linting: `npm run lint` (`eslint .`).
+1. **Type Safety Smells**:
+   - Never use `any` or `as any`. Use strict typing, generics, or validate unknown inputs with Zod.
+   - Never use `@ts-ignore` or `@ts-nocheck`. Fix type errors at the interface level.
+2. **Stateless / Stateful Boundary Smells**:
+   - Never store in-memory board state, active rooms, or Yjs documents in `main.api.ts`.
+   - Never register HTTP REST endpoints in `main.collab.ts`.
+3. **Security & Validation Smells**:
+   - Never bypass the Shadow Document validator when accepting incoming Yjs deltas.
+   - Never expose raw database IDs or credentials in log output or error responses.
+   - Never throw raw strings or generic untyped errors; use NestJS HTTP exceptions (`BadRequestException`, `ForbiddenException`, etc.).
+4. **Database & Query Smells**:
+   - Never introduce N+1 query patterns; use Prisma relational `include` or explicit batch queries.
+   - Never perform unindexed queries on large tables (`BoardUpdate`, `BoardSnapshot`, `BoardMember`).
+5. **WebSocket Asset Smells**:
+   - Never transfer binary file payloads over the collaborative WebSocket channel. Assets must always be uploaded directly via S3 Presigned PUT URLs.
 
-### 5. Git Submodule Protocol
-- Always commit inside `backend/` first following Conventional Commits (`feat(...)`, `fix(...)`, `docs(...)`, etc.).
-- Never commit broken TypeScript or failing tests; husky pre-commit hooks enforce lint and typecheck.
+---
+
+## 📦 Commit Message Standardization
+
+All commits inside `backend/` must strictly follow Conventional Commits:
+
+```
+<type>(<scope>): <subject in lowercase imperative mood>
+```
+
+- **Types**: `feat`, `fix`, `docs`, `style`, `refactor`, `perf`, `test`, `chore`.
+- **Backend Scopes**: `auth`, `boards`, `collab`, `assets`, `persistence`, `prisma`, `shared`, `observability`.
+- **Examples**:
+  - `feat(collab): add debounced update merging worker`
+  - `fix(auth): prevent race condition in atomic refresh token rotation`
+  - `refactor(boards): extract share link verification into guard`
+
+---
+
+## 🛠️ Verification Workflow
+
+Before committing in `backend/`, verify that all quality gates pass:
+
+```bash
+# Run unit & contract tests (Vitest)
+npm run test
+
+# Run TypeScript typecheck (tsc --noEmit)
+npm run typecheck
+
+# Run ESLint
+npm run lint
+
+# If shared contracts changed, verify parity from root:
+make sync-shared-check
+```

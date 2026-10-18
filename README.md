@@ -1,6 +1,6 @@
-# 🚀 Whiteboard - Backend (API REST & Collab Server)
+# 🚀 Whiteboard — Backend (REST API & Collab Server)
 
-> Backend distribuído de alta escalabilidade construído com NestJS 11, Prisma 6, Yjs e Redis. Provê uma API REST stateless para gerenciamento de quadros, autenticação e presigned URLs S3, somada a um Collab Server WebSocket stateful dedicado à sincronização de salas em tempo real e reconciliação CRDT.
+> High-scalability distributed backend built with NestJS 11, Prisma 6, Yjs, and Redis. Features a stateless REST API for user management, authentication, and S3 presigned URLs, paired with a stateful WebSocket Collab Server dedicated to real-time room synchronization, authoritative Shadow Document validation, and CRDT persistence.
 
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.9-007ACC?style=for-the-badge&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![NestJS](https://img.shields.io/badge/NestJS-11.2-E0234E?style=for-the-badge&logo=nestjs&logoColor=white)](https://nestjs.com/)
@@ -13,40 +13,41 @@
 ---
 
 <div align="center">
-  <img src="docs/images/backend-architecture-preview.png" alt="Whiteboard Backend - Arquitetura de Microsserviços & Collab" width="100%" />
-  <p><em>Arquitetura dual-entrypoint (API REST :3001 & Collab WS :3002), Shadow Document autoritativo e persistência distribuída</em></p>
+  <img src="docs/images/backend-architecture-preview.png" alt="Whiteboard Backend - Microservices & Collab Architecture" width="100%" />
+  <p><em>Dual-entrypoint architecture (REST API :3001 & Collab WS :3002), authoritative Shadow Document, and distributed persistence</em></p>
 </div>
 
 ---
 
-## 📋 Sobre o Projeto
+## 📋 About The Submodule
 
-O **Whiteboard Backend** é o núcleo de processamento e dados da solução de quadro branco colaborativo. Ele adota uma arquitetura de inicialização dupla (**dual-entrypoint**) em um único codebase:
+The **Whiteboard Backend** is the core processing and persistence engine of the platform. It adopts a **dual-entrypoint architecture** within a single codebase:
 
-1. **API REST Stateless (`main.api.ts`)**: Responsável pelo cadastro de usuários, autenticação segura, CRUD de quadros, permissões de membros (RBAC), links de compartilhamento e geração de presigned URLs para upload direto de mídias em storage S3.
-2. **Collab Server Stateful (`main.collab.ts`)**: Servidor WebSocket dedicado que gerencia as conexões de tempo real por sala, troca mensagens binárias compactadas através do protocolo Yjs (`y-protocols` + `lib0`), propaga a presença dos usuários e persiste deltas e snapshots binários de forma assíncrona.
+1. **Stateless REST API (`main.api.ts` on port 3001)**: Handles user registration, Argon2id authentication, board CRUD, RBAC member management (`OWNER`, `EDITOR`, `VIEWER`), share links with SHA-256 tokens, and presigned S3 URLs for direct client media uploads.
+2. **Stateful Collab Server (`main.collab.ts` on port 3002)**: Dedicated WebSocket gateway managing real-time connections per board room, binary Yjs delta exchange (`y-protocols` + `lib0`), live user presence, authoritative Shadow Document schema validation, and debounced snapshot persistence.
 
-Esta separação garante que o consumo intensivo de I/O em tempo real do WebSocket não degrade o desempenho ou a disponibilidade das rotas REST de gerenciamento.
-
----
-
-## 🌐 Serviços e Portas Locais
-
-| Serviço           | Porta / URL                                                              | Descrição                                              |
-| :---------------- | :----------------------------------------------------------------------- | :----------------------------------------------------- |
-| **API REST**      | [http://localhost:3001](http://localhost:3001)                           | Ponto de entrada das requisições HTTP REST             |
-| **Swagger UI**    | [http://localhost:3001/v1/docs](http://localhost:3001/v1/docs)           | Documentação interativa dos endpoints                  |
-| **OpenAPI Spec**  | [http://localhost:3001/v1/docs-json](http://localhost:3001/v1/docs-json) | Especificação OpenAPI para geração do cliente frontend |
-| **Collab Server** | `ws://localhost:3002`                                                    | Gateway WebSocket para sincronização Yjs               |
-| **Health Checks** | [http://localhost:3001/health/live](http://localhost:3001/health/live)   | Sondagem de liveness e readiness                       |
+This strict separation ensures that real-time WebSocket I/O does not degrade the performance or availability of management REST endpoints.
 
 ---
 
-## 🧱 Arquitetura dos Módulos
+## 🌐 Local Services & Endpoints
+
+| Service | Address | Description |
+| :--- | :--- | :--- |
+| **REST API** | [http://localhost:3001](http://localhost:3001) | HTTP REST endpoints (`/v1/*`) |
+| **Swagger UI** | [http://localhost:3001/v1/docs](http://localhost:3001/v1/docs) | Interactive OpenAPI documentation |
+| **OpenAPI Spec** | [http://localhost:3001/v1/docs-json](http://localhost:3001/v1/docs-json) | OpenAPI JSON specification |
+| **Collab Server** | `ws://localhost:3002/collab` | Real-time WebSocket CRDT gateway |
+| **Health Liveness** | [http://localhost:3001/health/live](http://localhost:3001/health/live) | Basic HTTP liveness probe |
+| **Health Readiness** | [http://localhost:3001/health/ready](http://localhost:3001/health/ready) | PostgreSQL and Redis readiness probe |
+
+---
+
+## 🧱 Module Architecture
 
 ```mermaid
 flowchart TD
-  subgraph HTTP["API REST (main.api.ts - :3001)"]
+  subgraph HTTP["REST API (main.api.ts - :3001)"]
     AuthMod["AuthModule<br/>(JWT, Argon2, Refresh)"]
     BoardsMod["BoardsModule<br/>(CRUD, RBAC, ShareLinks)"]
     AssetsMod["AssetsModule<br/>(Presigned URLs S3)"]
@@ -55,13 +56,13 @@ flowchart TD
 
   subgraph WS["Collab Server (main.collab.ts - :3002)"]
     CollabGateway["CollabGateway<br/>(WebSocket Gateway)"]
-    RoomManager["RoomManagerService<br/>(Y.Doc em Memória)"]
+    RoomManager["RoomManagerService<br/>(In-Memory Y.Doc)"]
     PersistService["PersistenceService<br/>(Debounced Worker)"]
   end
 
   subgraph Core["Core Services"]
     PrismaService["PrismaModule<br/>(PostgreSQL)"]
-    RedisService["RedisModule<br/>(Cache & Lock)"]
+    RedisService["RedisModule<br/>(Cache & Pub/Sub)"]
     S3Service["S3StorageModule<br/>(MinIO / AWS S3)"]
   end
 
@@ -77,231 +78,98 @@ flowchart TD
 
 ---
 
-## 🤝 Contrato com o Frontend (Fonte da Verdade)
+## 🤝 Contract Authority (Single Source of Truth)
 
-Este repositório é a **fonte oficial da verdade** de todo o contrato compartilhado com o frontend. Todos os arquivos em `src/shared/` definem o schema de dados, versões de compatibilidade e constantes de rede.
+This repository is the **authoritative single source of truth** for all shared data contracts. All files in `src/shared/` define the data schemas, protocol constants, and version numbers.
 
-### Regras de Ouro ao Alterar o Contrato:
-
-1. **Edição do Schema/Protocolo**: Modifique os arquivos em `src/shared/` (`schema.ts`, `protocol.ts`, `version.ts`).
-2. **Atualização da Versão**: Se houver quebra de retrocompatibilidade, incremente `SCHEMA_VERSION` ou `PROTOCOL_VERSION` em `src/shared/version.ts`.
-3. **Regeneração de Fixtures**: Execute o script de regeneração para atualizar os testes contratuais:
+### Rules for Contract Modifications:
+1. **Edit Schemas/Protocols**: Make all modifications in `src/shared/` (`schema.ts`, `protocol.ts`, `version.ts`).
+2. **Update Version**: If breaking backwards compatibility, increment `SCHEMA_VERSION` or `PROTOCOL_VERSION` in `src/shared/version.ts`.
+3. **Regenerate Fixtures**: Update binary protocol fixtures:
    ```bash
    npx tsx scripts/gen-fixtures.ts
    npm test
    ```
-4. **Sincronização no Frontend**: No repositório frontend, execute `npm run sync:shared` para importar a nova versão do contrato.
+4. **Propagate to Frontend**: Run `make sync-shared` from the workspace root (or `npm run sync:shared` in the frontend).
 
 ---
 
-## 🚀 Início Rápido
+## 🚀 Quickstart
 
-### Pré-requisitos
+### Prerequisites
+- [Node.js](https://nodejs.org/) `20.x` or `22.x`
+- [npm](https://www.npmjs.com/) `10.x+`
+- PostgreSQL, Redis, and MinIO running (recommended via `make deps` at workspace root)
 
-- [Node.js](https://nodejs.org/) 22 ou superior
-- [npm](https://www.npmjs.com/) 10 ou superior
-- Instâncias do PostgreSQL, Redis e MinIO ativas (recomendado via `make deps` na raiz do projeto)
+### Installation & Execution
+```bash
+# 1. Install dependencies
+npm ci
 
-### Instalação e Configuração
+# 2. Copy environment configuration
+cp .env.example .env
 
-1. **Clone e acesse a pasta do backend**
+# 3. Apply database migrations
+npm run prisma:migrate
 
-   ```bash
-   cd backend
-   ```
+# 4. (Optional) Seed demo users and boards
+npm run db:seed
 
-2. **Instale as dependências**
+# 5. Start development servers
+# Terminal 1: REST API
+npm run start:api:dev
 
-   ```bash
-   npm ci
-   ```
-
-3. **Configure as variáveis de ambiente**
-
-   ```bash
-   cp .env.example .env
-   ```
-
-4. **Execute as migrações do banco de dados**
-
-   ```bash
-   npx prisma migrate dev
-   ```
-
-5. **(Opcional) Popule o banco com dados iniciais de teste**
-
-   ```bash
-   npm run db:seed
-   ```
-
-6. **Inicie os dois serviços em terminais separados**
-
-   _Terminal 1 (API REST):_
-
-   ```bash
-   npm run start:api:dev
-   ```
-
-   _Terminal 2 (Collab Server WebSocket):_
-
-   ```bash
-   npm run start:collab:dev
-   ```
-
-7. **Acesse a documentação interativa**
-   Abra no navegador: [http://localhost:3001/v1/docs](http://localhost:3001/v1/docs)
-
----
-
-## 📦 Estrutura do Projeto
-
-```text
-backend/
-├── prisma/
-│   ├── schema.prisma              # Definição do schema relacional (User, Board, Snapshot, etc.)
-│   ├── migrations/                # Histórico cronológico de migrações SQL
-│   └── seed.ts                    # Script de população do banco para desenvolvimento
-│
-├── src/
-│   ├── core/                      # Módulos de infraestrutura e serviços globais
-│   │   ├── config/                # Validação de variáveis de ambiente com Zod
-│   │   ├── database/              # PrismaService e controle de ciclo de vida
-│   │   ├── observability/         # Health checks (Terminus) e métricas
-│   │   ├── redis/                 # Cliente Redis (ioredis) e chaves padronizadas
-│   │   └── storage/               # Cliente S3 (AWS SDK v3) e presigned URLs
-│   │
-│   ├── common/                    # Utilitários compartilhados no framework
-│   │   ├── decorators/            # @CurrentUser, @CurrentBoardAccess, @BoardRoles
-│   │   ├── filters/               # GlobalExceptionFilter com formato padronizado de erro
-│   │   ├── guards/                # JwtAuthGuard, BoardAccessGuard
-│   │   ├── interceptors/          # LoggingInterceptor para tempo de resposta
-│   │   └── middlewares/           # RequestContext, CorrelationID e Headers de segurança
-│   │
-│   ├── modules/                   # Módulos de negócio da aplicação
-│   │   ├── assets/                # Geração de URLs pré-assinadas para uploads
-│   │   ├── auth/                  # Registro, login, refresh tokens e lockout
-│   │   ├── boards/                # CRUD de quadros, membros, ACL e share links
-│   │   ├── collab/                # CollabGateway WS, RoomManager, decodificação lib0
-│   │   ├── persistence/           # PersistenceService (gravação em lote de deltas e snapshots)
-│   │   └── users/                 # Repositório de usuários
-│   │
-│   ├── shared/                    # FONTE DA VERDADE do contrato compartilhado
-│   │   ├── protocol.ts            # Tipos de mensagens WS e constantes de rede
-│   │   ├── schema.ts              # Schemas Zod dos elementos do canvas e awareness
-│   │   └── version.ts             # Constantes SHARED_VERSION, SCHEMA_VERSION, PROTOCOL_VERSION
-│   │
-│   ├── main.api.ts                # Bootstrap da API REST (porta 3001)
-│   ├── main.collab.ts             # Bootstrap do WebSocket Server (porta 3002)
-│   ├── app.module.ts              # Módulo raiz da API
-│   └── collab.module.ts           # Módulo raiz do Collab Server
-│
-├── docker/
-│   └── Dockerfile                 # Dockerfile multi-stage (targets: api e collab)
-├── test/                          # Suítes de testes automatizados
-│   ├── contract/                  # Testes de contrato binário Yjs e fixtures
-│   ├── fixtures/                  # Fixtures binárias de updates e snapshots
-│   ├── integration/               # Testes de integração E2E HTTP & WebSocket loopback
-│   └── unit/                      # Testes unitários (serviços, guards, DTOs, filtros, gateways)
-├── package.json
-└── tsconfig.json
+# Terminal 2: Collab Server
+npm run start:collab:dev
 ```
 
 ---
 
-## 🔧 Configuração de Ambiente
-
-As configurações são validadas na inicialização via schema Zod (`src/core/config/env.ts`):
-
-```env
-NODE_ENV=development
-API_PORT=3001
-COLLAB_PORT=3002
-
-# PostgreSQL
-DATABASE_URL=postgresql://wb:wb@localhost:5442/whiteboard
-
-# Redis
-REDIS_URL=redis://localhost:6379
-
-# Autenticação & JWT
-JWT_ACCESS_SECRET=change-me-with-at-least-32-characters-please
-JWT_ACCESS_TTL=900
-REFRESH_COOKIE_NAME=wb_refresh
-WS_TICKET_TTL=30
-ALLOWED_ORIGINS=http://localhost:3000
-
-# Armazenamento MinIO / S3
-S3_ENDPOINT=http://localhost:9000
-S3_BUCKET=whiteboard-assets
-S3_ACCESS_KEY=minio
-S3_SECRET_KEY=minio12345
-S3_REGION=us-east-1
-```
-
-| Variável            | Padrão              | Descrição                                                       |
-| :------------------ | :------------------ | :-------------------------------------------------------------- |
-| `API_PORT`          | `3001`              | Porta de escuta da API REST                                     |
-| `COLLAB_PORT`       | `3002`              | Porta de escuta do WebSocket Collab Server                      |
-| `DATABASE_URL`      | -                   | String de conexão completa com o PostgreSQL                     |
-| `REDIS_URL`         | -                   | URL do servidor Redis para cache e gerenciamento de salas       |
-| `JWT_ACCESS_SECRET` | -                   | Chave secreta de no mínimo 32 caracteres para assinatura do JWT |
-| `JWT_ACCESS_TTL`    | `900`               | Duração do token de acesso em segundos (15 minutos)             |
-| `WS_TICKET_TTL`     | `30`                | Tempo de vida em segundos do ticket temporário para o WebSocket |
-| `S3_ENDPOINT`       | -                   | URL do servidor S3/MinIO para presigned URLs                    |
-| `S3_BUCKET`         | `whiteboard-assets` | Nome do bucket destinado a imagens e anexos                     |
-
----
-
-## 📝 Scripts Disponíveis
+## 📝 Available Scripts
 
 ```bash
-# Desenvolvimento
-npm run start:api:dev       # Inicia a API REST com recarregamento automático (watch)
-npm run start:collab:dev    # Inicia o servidor Collab com recarregamento automático
+# Development
+npm run start:api:dev       # Starts REST API with auto-reload (port 3001)
+npm run start:collab:dev    # Starts Collab Server with auto-reload (port 3002)
 
-# Build e Produção
-npm run build               # Compila os bundles em dist/ (main.api.js e main.collab.js)
+# Production Build
+npm run build               # Compiles dist/ bundles for both entrypoints
 
-# Banco de Dados & Prisma
-npm run prisma:generate     # Gera o Prisma Client tipado
-npm run prisma:migrate      # Cria e aplica migrações em ambiente de desenvolvimento
-npm run prisma:deploy       # Aplica migrações pendentes em produção
-npm run db:seed             # Executa o seed com dados de demonstração
+# Database & Migrations
+npm run prisma:generate     # Generates typed Prisma Client
+npm run prisma:migrate      # Applies development migrations
+npm run prisma:deploy       # Applies production migrations
+npm run db:seed             # Seeds development database
 
-# Qualidade de Código & Testes
-npm run lint                # Executa o linter ESLint em todo o projeto
-npm run format              # Formata arquivos com Prettier
-npm run typecheck           # Valida tipos com TypeScript compiler sem emitir JS (strict)
-npm run test                # Roda a suíte de testes unitários e de contrato com Vitest (65 testes)
-npm run test:int            # Roda os testes de integração HTTP e WS de ponta a ponta (23 testes)
-npm run test:all            # Executa a validação completa (unitários + integração, 88 testes)
-
-# Contrato
-npx tsx scripts/gen-fixtures.ts # Atualiza fixtures binárias do protocolo Yjs
+# Quality & Testing
+npm run lint                # Runs ESLint analysis
+npm run format              # Formats code with Prettier
+npm run typecheck           # Runs strict TypeScript validation (tsc --noEmit)
+npm run test                # Runs Vitest unit & contract tests (71 tests)
+npm run test:int            # Runs integration tests with Testcontainers (Docker required)
 ```
 
 ---
 
-## 🐳 Construção com Docker
+## 🐳 Docker Deployment
 
-O arquivo `docker/Dockerfile` utiliza multi-stage builds otimizados com `node:22-alpine` para gerar imagens de produção leves e seguras:
+The `docker/Dockerfile` uses multi-stage builds optimized with `node:22-alpine` for lightweight and secure production images:
 
 ```bash
-# Gerar imagem da API REST
+# Build REST API image
 docker build -f docker/Dockerfile --target api -t wb-api .
 
-# Gerar imagem do Collab Server
+# Build Collab Server image
 docker build -f docker/Dockerfile --target collab -t wb-collab .
 ```
 
 ---
 
-## 📚 Documentação Técnica & Guias
+## 📚 Technical Documentation & Agent Guides
 
-- **Diretrizes para Agentes Backend**: [`AGENTS.md`](./AGENTS.md) · [`CLAUDE.md`](./CLAUDE.md)
-- **Guia Geral de Desenvolvimento**: [`../docs/DEVELOPMENT.md`](../docs/DEVELOPMENT.md)
-- **Manual de Testes**: [`../docs/TESTING.md`](../docs/TESTING.md)
-- **Protocolo de Sincronização CRDT**: [`../docs/PROTOCOL.md`](../docs/PROTOCOL.md)
-- **Arquitetura do Sistema**: [`../docs/architecture.md`](../docs/architecture.md)
+- **Backend Agent Guidelines**: [`AGENTS.md`](./AGENTS.md) · [`CLAUDE.md`](./CLAUDE.md)
+- **Local Development Guide**: [`../docs/DEVELOPMENT.md`](../docs/DEVELOPMENT.md)
+- **Testing Handbook**: [`../docs/TESTING.md`](../docs/TESTING.md)
+- **CRDT & Collab Protocol**: [`../docs/PROTOCOL.md`](../docs/PROTOCOL.md)
+- **System Architecture**: [`../docs/architecture.md`](../docs/architecture.md)
 - **ADR-006 (Dual-Entrypoint)**: [`../docs/adr/ADR-006-dual-entrypoint-nestjs.md`](../docs/adr/ADR-006-dual-entrypoint-nestjs.md)
-
