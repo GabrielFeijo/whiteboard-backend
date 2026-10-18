@@ -52,6 +52,10 @@ export class Room {
     this.awareness = new awarenessProtocol.Awareness(this.doc);
 
     this.updateHandler = (update: Uint8Array, origin: unknown) => {
+      if (origin === 'init') {
+        Y.applyUpdate(this.shadowDoc, update);
+        return;
+      }
       this.dirtySinceLastSnapshot = true;
       if (!this.clients.has(origin as WebSocket)) {
         Y.applyUpdate(this.shadowDoc, update);

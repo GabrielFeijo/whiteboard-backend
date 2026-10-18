@@ -37,6 +37,7 @@ export const EnvSchema = z.object({
   ALLOWED_ORIGINS: csv('http://localhost:3000'),
 
   S3_ENDPOINT: z.string().url(),
+  S3_PUBLIC_ENDPOINT: z.string().url().optional(),
   S3_BUCKET: z.string().min(1),
   S3_ACCESS_KEY: z.string().min(1),
   S3_SECRET_KEY: z.string().min(1),

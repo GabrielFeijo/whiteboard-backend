@@ -46,6 +46,14 @@ export class RefreshTokenRepository {
     });
   }
 
+  async markAsUsedAtomic(id: string): Promise<boolean> {
+    const result = await this.prisma.refreshToken.updateMany({
+      where: { id, usedAt: null, revokedAt: null },
+      data: { usedAt: new Date() },
+    });
+    return result.count > 0;
+  }
+
   async revokeFamily(familyId: string): Promise<void> {
     await this.prisma.refreshToken.updateMany({
       where: { familyId },

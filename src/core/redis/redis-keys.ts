@@ -1,7 +1,7 @@
 import { redisChannels as sharedRedisChannels } from '../../shared';
 
 export const redisKeys = {
-  authLockout: (email: string) => `auth:lockout:${email.toLowerCase()}`,
+  authLockout: (email: string, ip = 'default') => `auth:lockout:${email.toLowerCase()}:${ip}`,
   authAttempts: (email: string, ip: string) => `auth:attempts:${email.toLowerCase()}:${ip}`,
   wsTicket: (ticket: string) => `ws:ticket:${ticket}`,
 } as const;

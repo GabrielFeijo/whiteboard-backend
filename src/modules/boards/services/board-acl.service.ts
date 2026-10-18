@@ -104,7 +104,7 @@ export class BoardAclService implements BoardAclResolver {
     const link = await this.validateShareLink(board.id, shareToken);
     const effectiveRole = this.resolveEffectiveRole(directRole, link.role);
 
-    if (userId && board.ownerId !== userId) {
+    if (userId && board.ownerId !== userId && directRole !== effectiveRole) {
       await this.boardMembersRepository.enrollUser(board.id, userId, effectiveRole);
     }
 

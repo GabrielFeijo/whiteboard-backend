@@ -37,8 +37,9 @@ export class BoardsService {
 
     let nextCursor: string | null = null;
     if (boards.length > take) {
-      const nextItem = boards.pop();
-      nextCursor = nextItem?.id ?? null;
+      boards.pop();
+      const lastItem = boards[boards.length - 1];
+      nextCursor = lastItem?.id ?? null;
     }
 
     return {

@@ -23,9 +23,12 @@ export class S3StorageService {
   private readonly s3Client: S3Client;
   private readonly bucket: string;
   private readonly endpoint: string;
+  private readonly publicEndpoint: string;
 
   constructor(private readonly config: ConfigService<Env, true>) {
     this.endpoint = this.config.get('S3_ENDPOINT', { infer: true });
+    this.publicEndpoint =
+      this.config.get('S3_PUBLIC_ENDPOINT', { infer: true }) ?? this.endpoint;
     this.bucket = this.config.get('S3_BUCKET', { infer: true });
 
     this.s3Client = new S3Client({
@@ -52,10 +55,15 @@ export class S3StorageService {
       expiresIn,
     });
 
-    const assetUrl = `${this.endpoint}/${this.bucket}/${params.key}`;
+    const finalUploadUrl =
+      this.publicEndpoint !== this.endpoint
+        ? uploadUrl.replace(this.endpoint, this.publicEndpoint)
+        : uploadUrl;
+
+    const assetUrl = `${this.publicEndpoint.replace(/\/$/, '')}/${this.bucket}/${params.key}`;
 
     return {
-      uploadUrl,
+      uploadUrl: finalUploadUrl,
       assetUrl,
       key: params.key,
       expiresIn,

@@ -141,7 +141,7 @@ describe('AuthService', () => {
     ).rejects.toThrow(UnauthorizedException);
 
     expect(mockRedis.client.set).toHaveBeenCalledWith(
-      'auth:lockout:victim@example.com',
+      'auth:lockout:victim@example.com:127.0.0.1',
       '1',
       'EX',
       900,

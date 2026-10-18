@@ -165,10 +165,10 @@ export class RoomManagerService implements OnModuleInit, OnModuleDestroy {
 
     const initial = await this.persistence.loadInitialState(boardId);
     if (initial.snapshot) {
-      Y.applyUpdate(room.doc, initial.snapshot);
+      Y.applyUpdate(room.doc, initial.snapshot, 'init');
     }
     for (const update of initial.updates) {
-      Y.applyUpdate(room.doc, update);
+      Y.applyUpdate(room.doc, update, 'init');
     }
 
     this.rooms.set(boardId, room);

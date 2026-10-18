@@ -101,7 +101,7 @@ export class AuthService {
   async login(dto: LoginDto, ip = 'unknown'): Promise<AuthSessionResult> {
     const email = dto.email.toLowerCase().trim();
 
-    await this.bruteForceService.assertNotLocked(email);
+    await this.bruteForceService.assertNotLocked(email, ip);
 
     const user = await this.usersRepository.findByEmail(email);
 
@@ -148,7 +148,10 @@ export class AuthService {
       throw new UnauthorizedException('Refresh token reuse detected. Token family revoked.');
     }
 
-    await this.refreshTokenRepository.markAsUsed(storedToken.id);
+    const marked = await this.refreshTokenRepository.markAsUsedAtomic(storedToken.id);
+    if (!marked) {
+      throw new UnauthorizedException('Refresh token already consumed');
+    }
 
     const user = {
       id: storedToken.user.id,

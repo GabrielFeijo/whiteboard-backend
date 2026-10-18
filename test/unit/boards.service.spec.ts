@@ -311,4 +311,27 @@ describe('Boards Domain Services (BoardsService, BoardMembersService, BoardWsTic
       JSON.stringify({ type: 'REMOVE_MEMBER', userId: 'u2' }),
     );
   });
+
+  it('paginates boards with cursor and sets nextCursor to the last item of the page', async () => {
+    mockPrisma.board.findMany.mockResolvedValue([
+      { id: 'b1', title: 'Board 1', ownerId: 'u1', members: [{ role: 'OWNER' }], _count: { members: 1 } },
+      { id: 'b2', title: 'Board 2', ownerId: 'u1', members: [{ role: 'OWNER' }], _count: { members: 1 } },
+      { id: 'b3', title: 'Board 3', ownerId: 'u1', members: [{ role: 'OWNER' }], _count: { members: 1 } },
+    ]);
+
+    const res = await boardsService.findAll('u1', undefined, 2);
+    expect(res.items).toHaveLength(2);
+    expect(res.items.map((i) => i.id)).toEqual(['b1', 'b2']);
+    expect(res.nextCursor).toBe('b2');
+  });
+
+  it('returns null nextCursor when items do not exceed limit', async () => {
+    mockPrisma.board.findMany.mockResolvedValue([
+      { id: 'b1', title: 'Board 1', ownerId: 'u1', members: [{ role: 'OWNER' }], _count: { members: 1 } },
+    ]);
+
+    const res = await boardsService.findAll('u1', undefined, 2);
+    expect(res.items).toHaveLength(1);
+    expect(res.nextCursor).toBeNull();
+  });
 });

@@ -94,34 +94,41 @@ export class CollabGateway
       if (ctx) ctx.isAlive = true;
     });
 
-    const room = await this.roomManager.getOrLoadRoom(payload.boardId);
+    try {
+      const room = await this.roomManager.getOrLoadRoom(payload.boardId);
 
-    if (!this.socketContexts.has(client) || client.readyState !== WebSocket.OPEN) {
-      this.unregisterConnection(client, payload.userId);
-      return;
-    }
-
-    if (room.clients.size >= LIMITS.MAX_PARTICIPANTS_PER_BOARD) {
-      this.unregisterConnection(client, payload.userId);
-      client.close(WS_CLOSE.RATE_LIMITED, 'Room capacity exceeded');
-      return;
-    }
-
-    room.attach(client, {
-      userId: payload.userId,
-      userName: payload.userName,
-      role: payload.role,
-      linkId: payload.linkId,
-    });
-
-    client.on('message', (raw: Buffer) => {
-      if (raw.byteLength > LIMITS.MAX_MESSAGE_BYTES) {
-        client.close(WS_CLOSE.RATE_LIMITED, 'Message exceeds 1MB limit');
+      if (!this.socketContexts.has(client) || client.readyState !== WebSocket.OPEN) {
+        this.unregisterConnection(client, payload.userId);
         return;
       }
-      this.metrics.incrementSyncMessages();
-      room.handleMessage(client, new Uint8Array(raw));
-    });
+
+      if (room.clients.size >= LIMITS.MAX_PARTICIPANTS_PER_BOARD) {
+        this.unregisterConnection(client, payload.userId);
+        client.close(WS_CLOSE.RATE_LIMITED, 'Room capacity exceeded');
+        return;
+      }
+
+      room.attach(client, {
+        userId: payload.userId,
+        userName: payload.userName,
+        role: payload.role,
+        linkId: payload.linkId,
+      });
+
+      client.on('message', (raw: Buffer) => {
+        if (raw.byteLength > LIMITS.MAX_MESSAGE_BYTES) {
+          client.close(WS_CLOSE.RATE_LIMITED, 'Message exceeds 1MB limit');
+          return;
+        }
+        this.metrics.incrementSyncMessages();
+        room.handleMessage(client, new Uint8Array(raw));
+      });
+    } catch {
+      this.unregisterConnection(client, payload.userId);
+      if (client.readyState === WebSocket.OPEN) {
+        client.close(WS_CLOSE.RESTART, 'Failed to initialize session');
+      }
+    }
   }
 
   private isOriginAllowed(origin?: string): boolean {

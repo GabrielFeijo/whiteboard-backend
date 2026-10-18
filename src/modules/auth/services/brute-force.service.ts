@@ -11,19 +11,19 @@ export class BruteForceService {
     private readonly config: ConfigService<Env, true>,
   ) {}
 
-  async assertNotLocked(email: string): Promise<void> {
-    const lockoutKey = redisKeys.authLockout(email);
+  async assertNotLocked(email: string, ip = 'unknown'): Promise<void> {
+    const lockoutKey = redisKeys.authLockout(email, ip);
     const isLocked = await this.redis.client.get(lockoutKey);
     if (isLocked) {
       throw new ForbiddenException(
-        'Account temporarily locked due to failed attempts. Try again in 15 minutes.',
+        'Account temporarily locked from this network due to failed attempts. Try again in 15 minutes.',
       );
     }
   }
 
   async recordFailedAttempt(email: string, ip: string): Promise<void> {
     const attemptsKey = redisKeys.authAttempts(email, ip);
-    const lockoutKey = redisKeys.authLockout(email);
+    const lockoutKey = redisKeys.authLockout(email, ip);
     const lockoutTtl = this.config.get('AUTH_LOCKOUT_TTL_SECONDS', { infer: true }) ?? 900;
     const maxAttempts = this.config.get('AUTH_MAX_LOGIN_ATTEMPTS', { infer: true }) ?? 5;
 
@@ -38,6 +38,10 @@ export class BruteForceService {
 
   async clearAttempts(email: string, ip: string): Promise<void> {
     const attemptsKey = redisKeys.authAttempts(email, ip);
-    await this.redis.client.del(attemptsKey);
+    const lockoutKey = redisKeys.authLockout(email, ip);
+    await Promise.all([
+      this.redis.client.del(attemptsKey),
+      this.redis.client.del(lockoutKey),
+    ]);
   }
 }
