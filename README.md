@@ -293,3 +293,15 @@ docker build -f docker/Dockerfile --target api -t wb-api .
 # Gerar imagem do Collab Server
 docker build -f docker/Dockerfile --target collab -t wb-collab .
 ```
+
+---
+
+## 📚 Documentação Técnica & Guias
+
+- **Diretrizes para Agentes Backend**: [`AGENTS.md`](./AGENTS.md) · [`CLAUDE.md`](./CLAUDE.md)
+- **Guia Geral de Desenvolvimento**: [`../docs/DEVELOPMENT.md`](../docs/DEVELOPMENT.md)
+- **Manual de Testes**: [`../docs/TESTING.md`](../docs/TESTING.md)
+- **Protocolo de Sincronização CRDT**: [`../docs/PROTOCOL.md`](../docs/PROTOCOL.md)
+- **Arquitetura do Sistema**: [`../docs/architecture.md`](../docs/architecture.md)
+- **ADR-006 (Dual-Entrypoint)**: [`../docs/adr/ADR-006-dual-entrypoint-nestjs.md`](../docs/adr/ADR-006-dual-entrypoint-nestjs.md)
+
