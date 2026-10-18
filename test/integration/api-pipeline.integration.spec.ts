@@ -153,12 +153,16 @@ describe('API REST End-to-End Pipeline Integration', () => {
           where,
           data,
         }: {
-          where: { familyId?: string; tokenHash?: string; userId?: string };
+          where: { familyId?: string; tokenHash?: string; userId?: string; id?: string; usedAt?: null; revokedAt?: null };
           data: Record<string, unknown>;
         }) => {
           let count = 0;
           for (const rt of refreshTokens.values()) {
             if (
+              (where.id &&
+                rt.id === where.id &&
+                (where.usedAt === undefined || rt.usedAt === where.usedAt) &&
+                (where.revokedAt === undefined || rt.revokedAt === where.revokedAt)) ||
               (where.familyId && rt.familyId === where.familyId) ||
               (where.tokenHash && rt.tokenHash === where.tokenHash) ||
               (where.userId && rt.userId === where.userId)

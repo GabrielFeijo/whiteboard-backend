@@ -43,7 +43,7 @@ The backend is built with **NestJS 11** and **TypeScript**, engineered with a **
 - `src/shared/`:
   - **Single source of truth** for shared schemas, Zod validators, element types, error codes, and protocol constants.
 - `prisma/`:
-  - `schema.prisma`: Data models (`User`, `RefreshToken`, `Board`, `BoardMember`, `BoardShareLink`, `BoardSnapshot`, `BoardUpdate`, `BoardAsset`).
+  - `schema.prisma`: Data models mapped to PostgreSQL `snake_case` tables (`user`, `refresh_token`, `board`, `board_member`, `share_link`, `snapshot`, `doc_update`).
   - Migrations in `prisma/migrations/`.
   - Development seed scripts in `prisma/seed.ts`.
 
@@ -73,7 +73,8 @@ The backend is built with **NestJS 11** and **TypeScript**, engineered with a **
    - Never throw raw strings or generic untyped errors; use NestJS HTTP exceptions (`BadRequestException`, `ForbiddenException`, etc.).
 4. **Database & Query Smells**:
    - Never introduce N+1 query patterns; use Prisma relational `include` or explicit batch queries.
-   - Never perform unindexed queries on large tables (`BoardUpdate`, `BoardSnapshot`, `BoardMember`).
+   - Never perform unindexed queries on large tables (`doc_update`, `snapshot`, `board_member`).
+   - Never introduce Prisma models or fields without explicit `snake_case` database mapping (`@@map("table_name")` and `@map("column_name")`).
 5. **WebSocket Asset Smells**:
    - Never transfer binary file payloads over the collaborative WebSocket channel. Assets must always be uploaded directly via S3 Presigned PUT URLs.
 

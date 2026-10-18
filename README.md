@@ -158,7 +158,7 @@ Este repositório é a **fonte oficial da verdade** de todo o contrato compartil
 ```text
 backend/
 ├── prisma/
-│   ├── schema.prisma              # Definição do schema relacional (User, Board, Snapshot, etc.)
+│   ├── schema.prisma              # Schema Prisma com tabelas e colunas mapeadas em snake_case (user, board, etc.)
 │   ├── migrations/                # Histórico cronológico de migrações SQL
 │   └── seed.ts                    # Script de população do banco para desenvolvimento
 │
