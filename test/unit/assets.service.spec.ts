@@ -22,15 +22,18 @@ describe('AssetsService', () => {
 
   const s3Storage = new S3StorageService(mockConfig);
 
-  it('rejects upload presign if user is a VIEWER', async () => {
-    const mockBoardAcl = {
+  function createMockBoardAcl(role: 'OWNER' | 'EDITOR' | 'VIEWER'): BoardAclService {
+    return {
       resolveBoardWithAccess: vi.fn().mockResolvedValue({
         id: 'board-1',
-        currentUserRole: 'VIEWER',
+        currentUserRole: role,
       }),
+      assertCanEdit: BoardAclService.prototype.assertCanEdit,
     } as unknown as BoardAclService;
+  }
 
-    const service = new AssetsService(s3Storage, mockBoardAcl);
+  it('rejects upload presign if user is a VIEWER', async () => {
+    const service = new AssetsService(s3Storage, createMockBoardAcl('VIEWER'));
 
     await expect(
       service.createPresignedUploadUrl('board-1', 'user-viewer', {
@@ -42,14 +45,7 @@ describe('AssetsService', () => {
   });
 
   it('generates presigned upload url and public asset url for EDITOR and ignores malicious filename extensions', async () => {
-    const mockBoardAcl = {
-      resolveBoardWithAccess: vi.fn().mockResolvedValue({
-        id: 'board-1',
-        currentUserRole: 'EDITOR',
-      }),
-    } as unknown as BoardAclService;
-
-    const service = new AssetsService(s3Storage, mockBoardAcl);
+    const service = new AssetsService(s3Storage, createMockBoardAcl('EDITOR'));
 
     const result = await service.createPresignedUploadUrl('board-1', 'user-editor', {
       filename: 'exploit.html',
@@ -67,14 +63,7 @@ describe('AssetsService', () => {
   });
 
   it('generates presigned download url for authorized board member', async () => {
-    const mockBoardAcl = {
-      resolveBoardWithAccess: vi.fn().mockResolvedValue({
-        id: 'board-1',
-        currentUserRole: 'VIEWER',
-      }),
-    } as unknown as BoardAclService;
-
-    const service = new AssetsService(s3Storage, mockBoardAcl);
+    const service = new AssetsService(s3Storage, createMockBoardAcl('VIEWER'));
 
     const result = await service.createPresignedDownloadUrl(
       'board-1',
@@ -89,14 +78,7 @@ describe('AssetsService', () => {
   });
 
   it('rejects path traversal in asset key when generating download url', async () => {
-    const mockBoardAcl = {
-      resolveBoardWithAccess: vi.fn().mockResolvedValue({
-        id: 'board-1',
-        currentUserRole: 'VIEWER',
-      }),
-    } as unknown as BoardAclService;
-
-    const service = new AssetsService(s3Storage, mockBoardAcl);
+    const service = new AssetsService(s3Storage, createMockBoardAcl('VIEWER'));
 
     await expect(
       service.createPresignedDownloadUrl('board-1', 'user-viewer', '../secret-board/asset.png'),

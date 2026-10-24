@@ -56,11 +56,7 @@ export class S3StorageService {
       expiresIn,
     });
 
-    const finalUploadUrl =
-      this.publicEndpoint !== this.endpoint
-        ? uploadUrl.replace(this.endpoint, this.publicEndpoint)
-        : uploadUrl;
-
+    const finalUploadUrl = this.rewritePublicEndpoint(uploadUrl);
     const assetUrl = `${this.publicEndpoint.replace(/\/$/, '')}/${this.bucket}/${params.key}`;
     const readUrl = await this.createPresignedGetUrl(params.key, expiresIn);
 
@@ -83,8 +79,12 @@ export class S3StorageService {
       expiresIn: expiresInSeconds,
     });
 
+    return this.rewritePublicEndpoint(readUrl);
+  }
+
+  private rewritePublicEndpoint(signedUrl: string): string {
     return this.publicEndpoint !== this.endpoint
-      ? readUrl.replace(this.endpoint, this.publicEndpoint)
-      : readUrl;
+      ? signedUrl.replace(this.endpoint, this.publicEndpoint)
+      : signedUrl;
   }
 }

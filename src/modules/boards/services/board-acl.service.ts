@@ -101,22 +101,40 @@ export class BoardAclService implements BoardAclResolver {
     directRole?: Role,
     userId?: string,
   ): Promise<ResolvedBoardWithRole> {
-    const link = await this.validateShareLink(board.id, shareToken);
-    const effectiveRole = this.resolveEffectiveRole(directRole, link.role);
-
-    if (userId && board.ownerId !== userId && directRole !== effectiveRole) {
-      await this.boardMembersRepository.enrollUser(board.id, userId, effectiveRole);
-    }
+    const { effectiveRole, linkId } = await this.resolveShareLinkAndEnroll({
+      boardId: board.id,
+      ownerId: board.ownerId,
+      shareToken,
+      directRole,
+      userId,
+    });
 
     return {
       ...board,
       role: effectiveRole,
       currentUserRole: effectiveRole,
-      resolvedLinkId: link.id,
+      resolvedLinkId: linkId,
     };
   }
 
-  private resolveEffectiveRole(directRole?: Role, linkRole: Role = Role.VIEWER): Role {
+  async resolveShareLinkAndEnroll(params: {
+    boardId: string;
+    ownerId: string;
+    shareToken: string;
+    directRole?: Role;
+    userId?: string;
+  }): Promise<{ effectiveRole: Role; linkId: string }> {
+    const link = await this.validateShareLink(params.boardId, params.shareToken);
+    const effectiveRole = this.resolveEffectiveRole(params.directRole, link.role);
+
+    if (params.userId && params.ownerId !== params.userId && params.directRole !== effectiveRole) {
+      await this.boardMembersRepository.enrollUser(params.boardId, params.userId, effectiveRole);
+    }
+
+    return { effectiveRole, linkId: link.id };
+  }
+
+  resolveEffectiveRole(directRole?: Role, linkRole: Role = Role.VIEWER): Role {
     if (directRole === Role.OWNER) {
       return Role.OWNER;
     }

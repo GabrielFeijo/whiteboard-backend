@@ -11,7 +11,6 @@ import { Env } from '../../../core/config/env';
 import { redisKeys } from '../../../core/redis/redis-keys';
 import { RedisService } from '../../../core/redis/redis.service';
 import { LIMITS, Role } from '../../../shared';
-import { BoardMembersRepository } from '../members/board-members.repository';
 import { BoardsRepository } from '../repositories/boards.repository';
 import { BoardAclService } from '../services/board-acl.service';
 
@@ -35,7 +34,6 @@ interface ResolvedTicketIdentity {
 export class BoardWsTicketService {
   constructor(
     private readonly boardsRepository: BoardsRepository,
-    private readonly boardMembersRepository: BoardMembersRepository,
     private readonly boardAclService: BoardAclService,
     private readonly redis: RedisService,
     @Optional() private readonly config?: ConfigService<Env, true>,
@@ -115,28 +113,19 @@ export class BoardWsTicketService {
       };
     }
 
-    const link = await this.boardAclService.validateShareLink(boardId, linkToken);
-    const effectiveRole = this.computeEffectiveRole(directRole, link.role);
-
-    if (effectiveRole !== Role.OWNER) {
-      await this.boardMembersRepository.enrollUser(boardId, user.id, effectiveRole);
-    }
+    const { effectiveRole, linkId } = await this.boardAclService.resolveShareLinkAndEnroll({
+      boardId,
+      ownerId: board.ownerId,
+      shareToken: linkToken,
+      directRole,
+      userId: user.id,
+    });
 
     return {
       role: effectiveRole,
       userId: user.id,
       userName: user.name,
-      linkId: link.id,
+      linkId,
     };
-  }
-
-  private computeEffectiveRole(directRole?: Role, linkRole: Role = Role.VIEWER): Role {
-    if (directRole === Role.OWNER) {
-      return Role.OWNER;
-    }
-    if (linkRole === Role.EDITOR || directRole === Role.EDITOR) {
-      return Role.EDITOR;
-    }
-    return linkRole;
   }
 }
