@@ -4,7 +4,7 @@ import { Role } from '../../shared';
 
 export const AuthenticatedUserSchema = z.object({
   id: z.string().min(1),
-  email: z.string().email(),
+  email: z.email(),
   name: z.string().min(1),
 });
 

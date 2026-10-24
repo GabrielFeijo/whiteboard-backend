@@ -1,11 +1,14 @@
-import { CanActivate, ExecutionContext, Injectable } from '@nestjs/common';
-import { JwtService } from '@nestjs/jwt';
+import { CanActivate, ExecutionContext, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { JwtService } from '@nestjs/jwt';
 import { Env } from '../../core/config/env';
-import { AuthenticatedRequest, AuthenticatedUserSchema } from '../types/express-request.interface';
+import { AuthenticatedRequest } from '../types/express-request.interface';
+import { extractBearerToken, verifyBearerToken } from './jwt-token.helper';
 
 @Injectable()
 export class OptionalJwtAuthGuard implements CanActivate {
+  private readonly logger = new Logger(OptionalJwtAuthGuard.name);
+
   constructor(
     private readonly jwtService: JwtService,
     private readonly config: ConfigService<Env, true>,
@@ -13,27 +16,18 @@ export class OptionalJwtAuthGuard implements CanActivate {
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest<AuthenticatedRequest>();
-    const authHeader = request.headers.authorization;
+    const token = extractBearerToken(request);
 
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      return true;
-    }
-
-    const token = authHeader.slice(7).trim();
     if (!token) {
       return true;
     }
 
     try {
-      const rawPayload: unknown = await this.jwtService.verifyAsync(token, {
-        secret: this.config.get('JWT_ACCESS_SECRET', { infer: true }),
-      });
-      const parsed = AuthenticatedUserSchema.safeParse(rawPayload);
-      if (parsed.success) {
-        request.user = parsed.data;
-      }
-    } catch {
-      void 0;
+      request.user = await verifyBearerToken(token, this.jwtService, this.config);
+    } catch (err) {
+      this.logger.debug(
+        `Optional bearer token ignored: ${err instanceof Error ? err.message : 'invalid token'}`,
+      );
     }
 
     return true;

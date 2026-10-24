@@ -4,6 +4,7 @@ export * from './decorators/current-user.decorator';
 export * from './filters/global-exception.filter';
 export * from './guards/board-access.guard';
 export * from './guards/jwt-auth.guard';
+export * from './guards/jwt-token.helper';
 export * from './guards/optional-jwt-auth.guard';
 export * from './interceptors/logging.interceptor';
 export * from './middlewares/request-context.middleware';

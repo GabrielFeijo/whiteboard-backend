@@ -3,14 +3,20 @@ import {
   BadRequestException,
   ExecutionContext,
   ForbiddenException,
+  UnauthorizedException,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { Reflector } from '@nestjs/core';
+import { JwtService } from '@nestjs/jwt';
 import { Prisma } from '@prisma/client';
 import { describe, expect, it, vi } from 'vitest';
 import { GlobalExceptionFilter } from '../../src/common/filters/global-exception.filter';
 import { BoardAccessGuard, BoardAclResolver } from '../../src/common/guards/board-access.guard';
+import { JwtAuthGuard } from '../../src/common/guards/jwt-auth.guard';
+import { OptionalJwtAuthGuard } from '../../src/common/guards/optional-jwt-auth.guard';
 import { ParseCuidPipe } from '../../src/common/pipes/parse-cuid.pipe';
 import { AuthenticatedRequest } from '../../src/common/types/express-request.interface';
+import { Env } from '../../src/core/config/env';
 import { PrismaService } from '../../src/core/database/prisma.service';
 import { PersistenceService } from '../../src/modules/persistence/persistence.service';
 
@@ -119,5 +125,46 @@ describe('Architecture & Security Building Blocks (Filter, Guard, Pipe, Persiste
 
     await persistence.flushBoard('board-1');
     expect(createManyMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('JwtAuthGuard and OptionalJwtAuthGuard share bearer extraction and validate user schema', async () => {
+    const validUser = { id: 'u1', email: 'u1@example.com', name: 'User 1' };
+    const jwtService = {
+      verifyAsync: vi
+        .fn()
+        .mockResolvedValueOnce(validUser)
+        .mockRejectedValueOnce(new Error('jwt expired')),
+    } as unknown as JwtService;
+    const config = {
+      get: vi.fn().mockReturnValue('secret'),
+    } as unknown as ConfigService<Env, true>;
+
+    const strictGuard = new JwtAuthGuard(jwtService, config);
+    const optionalGuard = new OptionalJwtAuthGuard(jwtService, config);
+
+    const authReq: Partial<AuthenticatedRequest> = {
+      headers: { authorization: 'Bearer valid-jwt-token' },
+    };
+    const authCtx = {
+      switchToHttp: () => ({ getRequest: () => authReq }),
+    } as unknown as ExecutionContext;
+
+    await expect(strictGuard.canActivate(authCtx)).resolves.toBe(true);
+    expect(authReq.user).toEqual(validUser);
+
+    const expiredReq: Partial<AuthenticatedRequest> = {
+      headers: { authorization: 'Bearer expired-jwt-token' },
+    };
+    const expiredCtx = {
+      switchToHttp: () => ({ getRequest: () => expiredReq }),
+    } as unknown as ExecutionContext;
+
+    await expect(optionalGuard.canActivate(expiredCtx)).resolves.toBe(true);
+    expect(expiredReq.user).toBeUndefined();
+
+    const missingHeaderCtx = {
+      switchToHttp: () => ({ getRequest: () => ({ headers: {} }) }),
+    } as unknown as ExecutionContext;
+    await expect(strictGuard.canActivate(missingHeaderCtx)).rejects.toThrow(UnauthorizedException);
   });
 });

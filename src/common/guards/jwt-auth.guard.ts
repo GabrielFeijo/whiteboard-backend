@@ -1,8 +1,9 @@
 import { CanActivate, ExecutionContext, Injectable, UnauthorizedException } from '@nestjs/common';
-import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
+import { JwtService } from '@nestjs/jwt';
 import { Env } from '../../core/config/env';
-import { AuthenticatedRequest, AuthenticatedUserSchema } from '../types/express-request.interface';
+import { AuthenticatedRequest } from '../types/express-request.interface';
+import { extractBearerToken, verifyBearerToken } from './jwt-token.helper';
 
 @Injectable()
 export class JwtAuthGuard implements CanActivate {
@@ -13,32 +14,13 @@ export class JwtAuthGuard implements CanActivate {
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest<AuthenticatedRequest>();
-    const authHeader = request.headers.authorization;
+    const token = extractBearerToken(request);
 
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      throw new UnauthorizedException('Missing or invalid Authorization header');
-    }
-
-    const token = authHeader.slice(7).trim();
     if (!token) {
       throw new UnauthorizedException('Missing or invalid Authorization header');
     }
 
-    try {
-      const rawPayload: unknown = await this.jwtService.verifyAsync(token, {
-        secret: this.config.get('JWT_ACCESS_SECRET', { infer: true }),
-      });
-      const parsed = AuthenticatedUserSchema.safeParse(rawPayload);
-      if (!parsed.success) {
-        throw new UnauthorizedException('Malformed token payload');
-      }
-      request.user = parsed.data;
-      return true;
-    } catch (err) {
-      if (err instanceof UnauthorizedException) {
-        throw err;
-      }
-      throw new UnauthorizedException('Token is expired or invalid');
-    }
+    request.user = await verifyBearerToken(token, this.jwtService, this.config);
+    return true;
   }
 }

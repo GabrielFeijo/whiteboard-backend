@@ -39,13 +39,6 @@ export class RefreshTokenRepository {
     });
   }
 
-  async markAsUsed(id: string): Promise<void> {
-    await this.prisma.refreshToken.update({
-      where: { id },
-      data: { usedAt: new Date() },
-    });
-  }
-
   async markAsUsedAtomic(id: string): Promise<boolean> {
     const result = await this.prisma.refreshToken.updateMany({
       where: { id, usedAt: null, revokedAt: null },
