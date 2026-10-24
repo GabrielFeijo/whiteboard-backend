@@ -1,8 +1,10 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
+import * as Y from 'yjs';
 import { redisChannels } from '../../../core/redis/redis-keys';
 import { RedisService } from '../../../core/redis/redis.service';
+import { SnapshotReason } from '../../../shared';
 import { BoardAclService } from '../services/board-acl.service';
-import { SnapshotsRepository } from './snapshots.repository';
+import { SnapshotRecord, SnapshotsRepository } from './snapshots.repository';
 
 export interface SnapshotListItem {
   id: string;
@@ -29,19 +31,47 @@ export class BoardSnapshotsService {
     private readonly redis: RedisService,
   ) {}
 
+  private toSnapshotListItem(record: SnapshotRecord): SnapshotListItem {
+    return {
+      id: record.id,
+      boardId: record.boardId,
+      version: record.version,
+      reason: record.reason,
+      createdAt: record.createdAt,
+      size: record.data.length,
+    };
+  }
+
   async listSnapshots(boardId: string, userId: string): Promise<SnapshotListItem[]> {
     await this.boardAclService.resolveBoardWithAccess(boardId, userId);
 
     const snapshots = await this.snapshotsRepository.findManyByBoard(boardId, 50);
 
-    return snapshots.map((s) => ({
-      id: s.id,
-      boardId: s.boardId,
-      version: s.version,
-      reason: s.reason,
-      createdAt: s.createdAt,
-      size: s.data.length,
-    }));
+    return snapshots.map((s) => this.toSnapshotListItem(s));
+  }
+
+  async createManualSnapshot(boardId: string, userId: string): Promise<SnapshotListItem> {
+    const board = await this.boardAclService.resolveBoardWithAccess(boardId, userId);
+    this.boardAclService.assertCanEdit(board, 'Only owners and editors can create snapshots');
+
+    let stateBytes = await this.snapshotsRepository.loadMergedBoardState(boardId);
+    if (!stateBytes) {
+      const emptyDoc = new Y.Doc();
+      stateBytes = Y.encodeStateAsUpdate(emptyDoc);
+      emptyDoc.destroy();
+    }
+
+    const latestByVersion = await this.snapshotsRepository.findLatestByVersion(boardId);
+    const nextVersion = (latestByVersion?.version ?? 0) + 1;
+
+    const created = await this.snapshotsRepository.create({
+      boardId,
+      data: stateBytes,
+      version: nextVersion,
+      reason: SnapshotReason.MANUAL,
+    });
+
+    return this.toSnapshotListItem(created);
   }
 
   async restoreSnapshot(

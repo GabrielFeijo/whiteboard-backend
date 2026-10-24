@@ -147,4 +147,55 @@ describe('BoardSnapshotsService - Snapshots & Restore', () => {
       NotFoundException,
     );
   });
+
+  it('creates a manual snapshot merging latest snapshot and subsequent doc_updates', async () => {
+    const createSpy = vi.fn().mockResolvedValue({
+      id: 's-manual-1',
+      boardId: 'b1',
+      version: 2,
+      reason: 'MANUAL',
+      createdAt: new Date(),
+      data: Buffer.from([1, 2, 3, 4]),
+    });
+
+    const mockPrisma = {
+      board: {
+        findFirst: vi.fn().mockResolvedValue({
+          id: 'b1',
+          ownerId: 'u1',
+          members: [{ role: 'EDITOR', userId: 'u2' }],
+        }),
+      },
+      snapshot: {
+        findFirst: vi
+          .fn()
+          .mockResolvedValueOnce(null)
+          .mockResolvedValueOnce({ id: 's1', version: 1 }),
+        create: createSpy,
+      },
+      docUpdate: {
+        findMany: vi.fn().mockResolvedValue([]),
+      },
+    } as unknown as PrismaService;
+
+    const mockRedis = {
+      client: { publish: vi.fn() },
+    } as unknown as RedisService;
+
+    const service = createSnapshotServiceWithMocks(mockPrisma, mockRedis);
+    const created = await service.createManualSnapshot('b1', 'u2');
+
+    expect(created.id).toBe('s-manual-1');
+    expect(created.version).toBe(2);
+    expect(created.reason).toBe('MANUAL');
+    expect(createSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          boardId: 'b1',
+          version: 2,
+          reason: 'MANUAL',
+        }),
+      }),
+    );
+  });
 });

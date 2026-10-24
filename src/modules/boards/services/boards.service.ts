@@ -69,12 +69,12 @@ export class BoardsService {
 
   async duplicate(boardId: string, userId: string): Promise<BoardRecord> {
     const original = await this.boardAclService.resolveBoardWithAccess(boardId, userId);
-    const latestSnapshot = await this.snapshotsRepository.findLatestByBoard(boardId);
+    const mergedState = await this.snapshotsRepository.loadMergedBoardState(boardId);
 
     return this.boardsRepository.duplicateWithSnapshot(
       original.title,
       userId,
-      latestSnapshot?.data,
+      mergedState,
     );
   }
 

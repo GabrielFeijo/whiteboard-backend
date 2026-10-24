@@ -98,6 +98,10 @@ export class PersistenceService implements OnModuleInit, OnModuleDestroy {
           version,
           reason,
         },
+        select: {
+          id: true,
+          createdAt: true,
+        },
       });
 
       await client.docUpdate.deleteMany({
@@ -124,6 +128,11 @@ export class PersistenceService implements OnModuleInit, OnModuleDestroy {
     const snapshot = await this.prisma.snapshot.findFirst({
       where: { boardId },
       orderBy: { createdAt: 'desc' },
+      select: {
+        id: true,
+        createdAt: true,
+        data: true,
+      },
     });
 
     const updates = await this.prisma.docUpdate.findMany({

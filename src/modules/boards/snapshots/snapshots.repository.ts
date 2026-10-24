@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import * as Y from 'yjs';
 import { PrismaService } from '../../../core/database/prisma.service';
 
 export interface SnapshotRecord {
@@ -10,6 +11,15 @@ export interface SnapshotRecord {
   data: Uint8Array | Buffer;
 }
 
+const SNAPSHOT_SELECT = {
+  id: true,
+  boardId: true,
+  version: true,
+  reason: true,
+  createdAt: true,
+  data: true,
+} as const;
+
 @Injectable()
 export class SnapshotsRepository {
   constructor(private readonly prisma: PrismaService) {}
@@ -18,6 +28,7 @@ export class SnapshotsRepository {
     return this.prisma.snapshot.findFirst({
       where: { boardId },
       orderBy: { createdAt: 'desc' },
+      select: SNAPSHOT_SELECT,
     });
   }
 
@@ -25,12 +36,14 @@ export class SnapshotsRepository {
     return this.prisma.snapshot.findFirst({
       where: { boardId },
       orderBy: { version: 'desc' },
+      select: { id: true, version: true },
     });
   }
 
   async findByIdAndBoard(snapshotId: string, boardId: string): Promise<SnapshotRecord | null> {
     return this.prisma.snapshot.findFirst({
       where: { id: snapshotId, boardId },
+      select: SNAPSHOT_SELECT,
     });
   }
 
@@ -39,14 +52,7 @@ export class SnapshotsRepository {
       where: { boardId },
       orderBy: { createdAt: 'desc' },
       take,
-      select: {
-        id: true,
-        boardId: true,
-        version: true,
-        reason: true,
-        createdAt: true,
-        data: true,
-      },
+      select: SNAPSHOT_SELECT,
     });
   }
 
@@ -63,6 +69,35 @@ export class SnapshotsRepository {
         version: data.version,
         reason: data.reason,
       },
+      select: SNAPSHOT_SELECT,
     });
+  }
+
+  async loadMergedBoardState(boardId: string): Promise<Uint8Array | undefined> {
+    const latestSnapshot = await this.findLatestByBoard(boardId);
+    const updates =
+      (await this.prisma.docUpdate?.findMany({
+        where: {
+          boardId,
+          ...(latestSnapshot ? { createdAt: { gt: latestSnapshot.createdAt } } : {}),
+        },
+        orderBy: { id: 'asc' },
+      })) ?? [];
+
+    const chunks: Uint8Array[] = [];
+    if (latestSnapshot?.data) {
+      chunks.push(new Uint8Array(latestSnapshot.data));
+    }
+    for (const row of updates) {
+      chunks.push(new Uint8Array(row.data));
+    }
+
+    if (chunks.length === 0) {
+      return undefined;
+    }
+    if (chunks.length === 1) {
+      return chunks[0];
+    }
+    return Y.mergeUpdates(chunks);
   }
 }

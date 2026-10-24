@@ -31,6 +31,18 @@ export class BoardSnapshotsController {
     return this.boardSnapshotsService.listSnapshots(boardId, userId);
   }
 
+  @Post()
+  @RequireBoardRoles(Role.OWNER, Role.EDITOR)
+  @ApiOperation({ summary: 'Create a manual snapshot of the current board state' })
+  @ApiResponse({ status: 201, description: 'Manual snapshot created' })
+  @ApiResponse({ status: 403, description: 'Forbidden - viewers cannot create snapshots' })
+  async createSnapshot(
+    @Param('id', ParseCuidPipe) boardId: string,
+    @CurrentUser('id') userId: string,
+  ): Promise<SnapshotListItem> {
+    return this.boardSnapshotsService.createManualSnapshot(boardId, userId);
+  }
+
   @Post(':snapshotId/restore')
   @RequireBoardRoles(Role.OWNER, Role.EDITOR)
   @ApiOperation({ summary: 'Restore board canvas from a snapshot' })

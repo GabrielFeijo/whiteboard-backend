@@ -1,6 +1,7 @@
 import { ForbiddenException, UnauthorizedException } from '@nestjs/common';
 import * as crypto from 'node:crypto';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import * as Y from 'yjs';
 import { PrismaService } from '../../src/core/database/prisma.service';
 import { RedisService } from '../../src/core/redis/redis.service';
 import { BoardMembersRepository } from '../../src/modules/boards/members/board-members.repository';
@@ -38,6 +39,9 @@ interface MockBoardsPrisma {
   snapshot: {
     findFirst: ReturnType<typeof vi.fn>;
     create: ReturnType<typeof vi.fn>;
+  };
+  docUpdate: {
+    findMany: ReturnType<typeof vi.fn>;
   };
   $transaction: ReturnType<typeof vi.fn>;
 }
@@ -83,6 +87,9 @@ describe('Boards Domain Services (BoardsService, BoardMembersService, BoardWsTic
         findFirst: vi.fn(),
         create: vi.fn(),
       },
+      docUpdate: {
+        findMany: vi.fn().mockResolvedValue([]),
+      },
       $transaction: vi.fn((cb: (tx: MockBoardsPrisma) => unknown) => cb(mockPrisma)),
     };
     mockRedis = {
@@ -116,7 +123,6 @@ describe('Boards Domain Services (BoardsService, BoardMembersService, BoardWsTic
     );
     boardWsTicketService = new BoardWsTicketService(
       boardsRepository,
-      boardMembersRepository,
       boardAclService,
       redisService,
     );
@@ -151,6 +157,34 @@ describe('Boards Domain Services (BoardsService, BoardMembersService, BoardWsTic
       'EX',
       30,
     );
+  });
+
+  it('skips redundant member upsert on issueWsTicket when directRole already matches effectiveRole', async () => {
+    const rawToken = 'share-editor-token';
+    const tokenHash = crypto.createHash('sha256').update(rawToken).digest('hex');
+
+    mockPrisma.board.findFirst.mockResolvedValue({
+      id: 'b1',
+      ownerId: 'u1',
+      deletedAt: null,
+      members: [{ userId: 'u2', role: 'EDITOR' }],
+    });
+    mockPrisma.shareLink.findUnique.mockResolvedValue({
+      id: 'link-editor',
+      boardId: 'b1',
+      tokenHash,
+      role: 'EDITOR',
+      revokedAt: null,
+      expiresAt: null,
+    });
+
+    const res = await boardWsTicketService.issueWsTicket(
+      'b1',
+      { id: 'u2', name: 'User 2' },
+      rawToken,
+    );
+    expect(res.role).toBe('EDITOR');
+    expect(mockPrisma.boardMember.upsert).not.toHaveBeenCalled();
   });
 
   it('allows another user to access board via valid share token and enrolls member', async () => {
@@ -333,5 +367,57 @@ describe('Boards Domain Services (BoardsService, BoardMembersService, BoardWsTic
     const res = await boardsService.findAll('u1', undefined, 2);
     expect(res.items).toHaveLength(1);
     expect(res.nextCursor).toBeNull();
+  });
+
+  it('duplicates a board by merging its latest snapshot with subsequent doc_update rows', async () => {
+    const doc = new Y.Doc();
+    doc.getMap('elements').set('el-snap', 'from-snapshot');
+    const snapBytes = Y.encodeStateAsUpdate(doc);
+
+    const stateVector = Y.encodeStateVector(doc);
+    doc.getMap('elements').set('el-delta', 'from-doc-update');
+    const deltaBytes = Y.encodeStateAsUpdate(doc, stateVector);
+    doc.destroy();
+
+    const snapDate = new Date('2026-01-01T10:00:00Z');
+    mockPrisma.board.findFirst.mockResolvedValue({
+      id: 'b1',
+      title: 'Original Board',
+      ownerId: 'u1',
+      members: [{ userId: 'u1', role: 'OWNER' }],
+    });
+    mockPrisma.snapshot.findFirst.mockResolvedValue({
+      id: 's1',
+      boardId: 'b1',
+      version: 1,
+      createdAt: snapDate,
+      data: Buffer.from(snapBytes),
+    });
+    mockPrisma.docUpdate.findMany.mockResolvedValue([
+      {
+        id: 1n,
+        boardId: 'b1',
+        data: Buffer.from(deltaBytes),
+        createdAt: new Date('2026-01-01T10:01:00Z'),
+      },
+    ]);
+    mockPrisma.board.create.mockResolvedValue({
+      id: 'b2',
+      title: 'Copy of Original Board',
+      ownerId: 'u1',
+    });
+    mockPrisma.boardMember.create.mockResolvedValue({});
+    mockPrisma.snapshot.create.mockResolvedValue({});
+
+    const duplicated = await boardsService.duplicate('b1', 'u1');
+    expect(duplicated.id).toBe('b2');
+    expect(mockPrisma.snapshot.create).toHaveBeenCalledOnce();
+
+    const savedSnapshotBuffer = mockPrisma.snapshot.create.mock.calls[0]?.[0]?.data?.data as Buffer;
+    const verifyDoc = new Y.Doc();
+    Y.applyUpdate(verifyDoc, new Uint8Array(savedSnapshotBuffer));
+    expect(verifyDoc.getMap('elements').get('el-snap')).toBe('from-snapshot');
+    expect(verifyDoc.getMap('elements').get('el-delta')).toBe('from-doc-update');
+    verifyDoc.destroy();
   });
 });
