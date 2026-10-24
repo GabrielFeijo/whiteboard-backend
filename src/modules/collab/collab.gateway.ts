@@ -1,4 +1,4 @@
-import { OnModuleDestroy } from '@nestjs/common';
+import { Logger, OnModuleDestroy } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import {
   OnGatewayConnection,
@@ -25,6 +25,8 @@ interface ClientSocketContext {
 export class CollabGateway
   implements OnGatewayInit, OnGatewayConnection, OnGatewayDisconnect, OnModuleDestroy
 {
+  private readonly logger = new Logger(CollabGateway.name);
+
   @WebSocketServer()
   server!: Server;
 
@@ -123,7 +125,11 @@ export class CollabGateway
         this.metrics.incrementSyncMessages();
         room.handleMessage(client, new Uint8Array(raw));
       });
-    } catch {
+    } catch (err) {
+      this.logger.error(
+        `Failed to initialize WebSocket session for board ${payload.boardId}`,
+        err instanceof Error ? err.stack : String(err),
+      );
       this.unregisterConnection(client, payload.userId);
       if (client.readyState === WebSocket.OPEN) {
         client.close(WS_CLOSE.RESTART, 'Failed to initialize session');

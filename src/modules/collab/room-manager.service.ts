@@ -175,14 +175,18 @@ export class RoomManagerService implements OnModuleInit, OnModuleDestroy {
     this.metrics.setActiveRooms(this.rooms.size);
 
     if (this.subscriberClient) {
-      await this.subscriberClient.subscribe(
-        redisChannels.updates(boardId),
-        redisChannels.restore(boardId),
-        redisChannels.acl(boardId),
-      );
+      await this.subscriberClient.subscribe(...this.getBoardChannels(boardId));
     }
 
     return room;
+  }
+
+  private getBoardChannels(boardId: string): [string, string, string] {
+    return [
+      redisChannels.updates(boardId),
+      redisChannels.restore(boardId),
+      redisChannels.acl(boardId),
+    ];
   }
 
   scheduleUnload(boardId: string): void {
@@ -211,11 +215,7 @@ export class RoomManagerService implements OnModuleInit, OnModuleDestroy {
       this.rooms.delete(boardId);
       this.metrics.setActiveRooms(this.rooms.size);
       if (this.subscriberClient) {
-        await this.subscriberClient.unsubscribe(
-          redisChannels.updates(boardId),
-          redisChannels.restore(boardId),
-          redisChannels.acl(boardId),
-        );
+        await this.subscriberClient.unsubscribe(...this.getBoardChannels(boardId));
       }
     }
   }

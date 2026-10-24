@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { z } from 'zod';
 import { redisKeys } from '../../core/redis/redis-keys';
 import { RedisService } from '../../core/redis/redis.service';
@@ -16,6 +16,8 @@ export type TicketPayload = z.infer<typeof TicketPayloadSchema>;
 
 @Injectable()
 export class WsAuthService {
+  private readonly logger = new Logger(WsAuthService.name);
+
   constructor(private readonly redis: RedisService) {}
 
   async consumeTicket(ticket: string): Promise<TicketPayload | null> {
@@ -28,7 +30,10 @@ export class WsAuthService {
       const parsedJson: unknown = JSON.parse(raw);
       const validated = TicketPayloadSchema.safeParse(parsedJson);
       return validated.success ? validated.data : null;
-    } catch {
+    } catch (err) {
+      this.logger.warn(
+        `Failed to parse WebSocket ticket payload: ${err instanceof Error ? err.message : 'invalid JSON'}`,
+      );
       return null;
     }
   }

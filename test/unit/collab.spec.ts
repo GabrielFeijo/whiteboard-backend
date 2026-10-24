@@ -161,4 +161,61 @@ describe('Room & Yjs Synchronization + CRDT Validation', () => {
     room.detach(ws);
     expect(room.awareness.getStates().has(clientDoc.clientID)).toBe(false);
   });
+
+  it('restores an older snapshot over modified and deleted elements without republishing to Redis updates', () => {
+    const { mock, ws } = createMockWs();
+    room.attach(ws, { userId: 'u1', userName: 'Alice', role: 'EDITOR' });
+
+    room.doc.transact(() => {
+      const roots = getDocRoots(room.doc);
+      const el1 = new Y.Map<unknown>();
+      el1.set('id', 'el-1');
+      el1.set('type', 'rect');
+      el1.set('x', 10);
+      el1.set('y', 20);
+      el1.set('w', 100);
+      el1.set('h', 80);
+      el1.set('z', 1);
+      el1.set('createdBy', 'u1');
+      const style = new Y.Map<unknown>();
+      style.set('fill', '#ffffff');
+      style.set('stroke', '#000000');
+      style.set('strokeWidth', 2);
+      style.set('opacity', 1);
+      el1.set('style', style);
+      roots.elements.set('el-1', el1);
+    }, 'init');
+
+    const snapshotBytes = Y.encodeStateAsUpdate(room.doc);
+
+    room.doc.transact(() => {
+      const roots = getDocRoots(room.doc);
+      roots.elements.delete('el-1');
+      const el2 = new Y.Map<unknown>();
+      el2.set('id', 'el-2');
+      el2.set('type', 'ellipse');
+      roots.elements.set('el-2', el2);
+    }, 'redis');
+
+    expect(getDocRoots(room.doc).elements.has('el-1')).toBe(false);
+    expect(getDocRoots(room.doc).elements.has('el-2')).toBe(true);
+
+    mockRedis.client.publish.mockClear();
+    mockPersistence.queueUpdate.mockClear();
+    mock.send.mockClear();
+
+    room.restoreSnapshot(snapshotBytes);
+
+    const restoredElements = getDocRoots(room.doc).elements;
+    expect(restoredElements.size).toBe(1);
+    expect(restoredElements.has('el-1')).toBe(true);
+    expect(restoredElements.has('el-2')).toBe(false);
+    const restoredEl1 = restoredElements.get('el-1') as Y.Map<unknown>;
+    expect(restoredEl1.get('x')).toBe(10);
+    expect((restoredEl1.get('style') as Y.Map<unknown>).get('fill')).toBe('#ffffff');
+
+    expect(mock.send).toHaveBeenCalled();
+    expect(mockRedis.client.publish).not.toHaveBeenCalled();
+    expect(mockPersistence.queueUpdate).not.toHaveBeenCalled();
+  });
 });
