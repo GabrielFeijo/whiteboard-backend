@@ -6,7 +6,4 @@ export const redisKeys = {
   wsTicket: (ticket: string) => `ws:ticket:${ticket}`,
 } as const;
 
-export const redisChannels = {
-  ...sharedRedisChannels,
-  restore: (boardId: string) => `board:${boardId}:restore`,
-} as const;
+export const redisChannels = sharedRedisChannels;
