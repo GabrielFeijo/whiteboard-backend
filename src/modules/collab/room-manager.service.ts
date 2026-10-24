@@ -63,19 +63,16 @@ export class RoomManagerService implements OnModuleInit, OnModuleDestroy {
     const room = this.rooms.get(boardId);
     if (!room) return;
 
-    if (action === 'updates') {
-      room.applyRemoteRedisUpdate(message);
-      return;
-    }
-
-    if (action === 'restore') {
-      this.applyRedisRestore(boardId, room, message);
-      return;
-    }
-
-    if (action === 'acl') {
-      this.applyRedisAcl(boardId, room, message);
-      return;
+    switch (action) {
+      case 'updates':
+        room.applyRemoteRedisUpdate(message);
+        break;
+      case 'restore':
+        this.applyRedisRestore(boardId, room, message);
+        break;
+      case 'acl':
+        this.applyRedisAcl(boardId, room, message);
+        break;
     }
   }
 
