@@ -56,7 +56,7 @@ export class RoomManagerService implements OnModuleInit, OnModuleDestroy {
   }
 
   private handleRedisMessage(channel: string, message: string): void {
-    const match = channel.match(/^board:(.+):(updates|restore|acl)$/);
+    const match = channel.match(/^board:(.+):(updates|awareness|restore|acl)$/);
     if (!match) return;
 
     const [, boardId, action] = match;
@@ -66,6 +66,9 @@ export class RoomManagerService implements OnModuleInit, OnModuleDestroy {
     switch (action) {
       case 'updates':
         room.applyRemoteRedisUpdate(message);
+        break;
+      case 'awareness':
+        room.applyRemoteRedisAwareness(message);
         break;
       case 'restore':
         this.applyRedisRestore(boardId, room, message);
@@ -178,9 +181,10 @@ export class RoomManagerService implements OnModuleInit, OnModuleDestroy {
     return room;
   }
 
-  private getBoardChannels(boardId: string): [string, string, string] {
+  private getBoardChannels(boardId: string): [string, string, string, string] {
     return [
       redisChannels.updates(boardId),
+      redisChannels.awareness(boardId),
       redisChannels.restore(boardId),
       redisChannels.acl(boardId),
     ];

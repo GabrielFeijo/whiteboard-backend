@@ -7,7 +7,14 @@ import * as syncProtocol from 'y-protocols/sync';
 import * as Y from 'yjs';
 import { redisChannels } from '../../core/redis/redis-keys';
 import { RedisService } from '../../core/redis/redis.service';
-import { getDocRoots, LIMITS, MSG, Role, SnapshotReason, WS_CLOSE } from '../../shared';
+import {
+  getDocRoots,
+  MSG,
+  PresenceStateSchema,
+  Role,
+  SnapshotReason,
+  WS_CLOSE,
+} from '../../shared';
 import { PersistenceService } from '../persistence/persistence.service';
 import { SyncValidationFailureReason, YjsValidatorService } from './services/yjs-validator.service';
 import {
@@ -76,6 +83,10 @@ export class Room {
     );
   }
 
+  private isSocketOrigin(origin: unknown): origin is WebSocket {
+    return typeof origin === 'object' && origin !== null && this.clients.has(origin as WebSocket);
+  }
+
   private handleDocUpdate(update: Uint8Array, origin: unknown): void {
     if (origin === 'init') {
       Y.applyUpdate(this.shadowDoc, update);
@@ -83,7 +94,7 @@ export class Room {
     }
 
     this.dirtySinceLastSnapshot = true;
-    if (!this.clients.has(origin as WebSocket)) {
+    if (!this.isSocketOrigin(origin)) {
       Y.applyUpdate(this.shadowDoc, update);
     }
 
@@ -146,7 +157,39 @@ export class Room {
   }
 
   private processAwarenessMessage(ws: WebSocket, decoder: decoding.Decoder): void {
-    awarenessProtocol.applyAwarenessUpdate(this.awareness, decoding.readVarUint8Array(decoder), ws);
+    const meta = this.clients.get(ws);
+    if (!meta) return;
+
+    const rawUpdate = decoding.readVarUint8Array(decoder);
+    awarenessProtocol.applyAwarenessUpdate(this.awareness, rawUpdate, ws);
+
+    const clientIds = this.clientIdsBySocket.get(ws);
+    if (!clientIds) return;
+
+    const states = this.awareness.getStates();
+    for (const clientId of clientIds) {
+      const currentState = states.get(clientId);
+      if (!currentState) continue;
+
+      const parsed = PresenceStateSchema.safeParse(currentState);
+      if (!parsed.success) {
+        awarenessProtocol.removeAwarenessStates(this.awareness, [clientId], 'sanitize');
+        continue;
+      }
+
+      const sanitized = { ...parsed.data };
+      if (sanitized.user) {
+        sanitized.user = {
+          ...sanitized.user,
+          id: meta.userId,
+          role: meta.role,
+        };
+      }
+      if (meta.role === Role.VIEWER && sanitized.draft) {
+        delete sanitized.draft;
+      }
+      states.set(clientId, sanitized);
+    }
   }
 
   private processSyncMessage(
@@ -185,11 +228,6 @@ export class Room {
       return;
     }
 
-    if (this.isElementLimitExceeded()) {
-      ws.close(WS_CLOSE.FORBIDDEN, 'Element limit exceeded');
-      return;
-    }
-
     const syncPayloadSlice = data.subarray(syncPayloadOffset);
     const validation = this.validator.validateSyncUpdate(
       this.doc,
@@ -204,10 +242,15 @@ export class Room {
       return;
     }
 
-    const encoder = encoding.createEncoder();
-    encoding.writeVarUint(encoder, MSG.SYNC);
-    syncProtocol.readSyncMessage(decoder, encoder, this.doc, ws);
-    this.sendEncodedReply(ws, encoder);
+    try {
+      const encoder = encoding.createEncoder();
+      encoding.writeVarUint(encoder, MSG.SYNC);
+      syncProtocol.readSyncMessage(decoder, encoder, this.doc, ws);
+      this.sendEncodedReply(ws, encoder);
+    } catch (err) {
+      this.recreateShadowDoc();
+      throw err;
+    }
   }
 
   private createShadowDocMirror(): Y.Doc {
@@ -223,11 +266,6 @@ export class Room {
   private recreateShadowDoc(): void {
     this.shadowDoc.destroy();
     this.shadowDoc = this.createShadowDocMirror();
-  }
-
-  private isElementLimitExceeded(): boolean {
-    const roots = getDocRoots(this.doc);
-    return roots.elements.size > LIMITS.MAX_ELEMENTS;
   }
 
   private handleValidationFailure(
@@ -252,11 +290,11 @@ export class Room {
     updated: number[],
     removed: number[],
   ): void {
-    if (!origin || !this.clients.has(origin as WebSocket)) {
+    if (!this.isSocketOrigin(origin)) {
       return;
     }
 
-    const ws = origin as WebSocket;
+    const ws = origin;
     const set = this.clientIdsBySocket.get(ws) ?? new Set<number>();
     this.clientIdsBySocket.set(ws, set);
 
@@ -274,6 +312,15 @@ export class Room {
     const changedClients = added.concat(updated).concat(removed);
     const buff = encodeAwarenessMessage(this.awareness, changedClients);
     this.broadcastToPeers(buff, origin);
+
+    if (this.isSocketOrigin(origin) && changedClients.length > 0) {
+      const rawAwareness = awarenessProtocol.encodeAwarenessUpdate(this.awareness, changedClients);
+      this.redis.client
+        .publish(redisChannels.awareness(this.boardId), Buffer.from(rawAwareness).toString('base64'))
+        .catch((err: unknown) => {
+          this.logger.error(`Redis publish awareness failed for board ${this.boardId}`, err);
+        });
+    }
   }
 
   private broadcastToPeers(payload: Uint8Array, excludeOrigin?: unknown): void {
@@ -328,7 +375,15 @@ export class Room {
     Y.applyUpdate(this.doc, update, 'redis');
   }
 
+  applyRemoteRedisAwareness(awarenessBase64: string): void {
+    const update = new Uint8Array(Buffer.from(awarenessBase64, 'base64'));
+    awarenessProtocol.applyAwarenessUpdate(this.awareness, update, 'redis');
+  }
+
   restoreSnapshot(snapshotData: Uint8Array): void {
+    if (typeof (this.persistence as { clearBoardBuffer?: (id: string) => void }).clearBoardBuffer === 'function') {
+      (this.persistence as { clearBoardBuffer: (id: string) => void }).clearBoardBuffer(this.boardId);
+    }
     const tempDoc = new Y.Doc();
     try {
       if (snapshotData.length > 0) {

@@ -43,6 +43,10 @@ export class PersistenceService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
+  clearBoardBuffer(boardId: string): void {
+    this.buffer.delete(boardId);
+  }
+
   async flushBoard(boardId: string): Promise<void> {
     const updates = this.buffer.get(boardId);
     if (!updates || updates.length === 0) return;
@@ -83,7 +87,10 @@ export class PersistenceService implements OnModuleInit, OnModuleDestroy {
   ): Promise<void> {
     await this.flushBoard(boardId);
 
-    const executeSave = async (client: PrismaService): Promise<void> => {
+    type SnapshotTransactionClient = Pick<PrismaService, 'snapshot' | 'docUpdate'>;
+    const snapshotCutoff = new Date();
+
+    const executeSave = async (client: SnapshotTransactionClient): Promise<void> => {
       const latest = await client.snapshot.findFirst({
         where: { boardId },
         orderBy: { version: 'desc' },
@@ -107,14 +114,14 @@ export class PersistenceService implements OnModuleInit, OnModuleDestroy {
       await client.docUpdate.deleteMany({
         where: {
           boardId,
-          createdAt: { lte: snap.createdAt },
+          createdAt: { lte: snap.createdAt ?? snapshotCutoff },
         },
       });
     };
 
     if (typeof this.prisma.$transaction === 'function') {
       await this.prisma.$transaction(async (tx) => {
-        await executeSave(tx as unknown as PrismaService);
+        await executeSave(tx);
       });
       return;
     }

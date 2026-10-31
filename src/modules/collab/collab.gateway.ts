@@ -9,7 +9,7 @@ import {
 } from '@nestjs/websockets';
 import { IncomingMessage } from 'node:http';
 import { Server, WebSocket } from 'ws';
-import { Env } from '../../core/config/env';
+import { Env, NodeEnv } from '../../core/config/env';
 import { MetricsService } from '../../core/observability/metrics/metrics.service';
 import { LIMITS, WS_CLOSE } from '../../shared';
 import { RoomManagerService } from './room-manager.service';
@@ -91,6 +91,10 @@ export class CollabGateway
 
     this.registerConnection(client, payload.userId, payload.boardId);
 
+    client.on('error', (err: Error) => {
+      this.logger.warn(`WebSocket client error: ${err.message}`);
+    });
+
     client.on('pong', () => {
       const ctx = this.socketContexts.get(client);
       if (ctx) ctx.isAlive = true;
@@ -138,7 +142,9 @@ export class CollabGateway
   }
 
   private isOriginAllowed(origin?: string): boolean {
-    if (!origin) return true;
+    if (!origin) {
+      return this.config.get('NODE_ENV', { infer: true }) !== NodeEnv.PRODUCTION;
+    }
     const allowed = this.config.get('ALLOWED_ORIGINS', { infer: true });
     return allowed.includes(origin);
   }

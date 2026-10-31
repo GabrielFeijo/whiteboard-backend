@@ -66,21 +66,51 @@ export class YjsValidatorService {
         Y.applyUpdate(shadowDoc, currentState);
       }
 
-      const { metaModified, modifiedElementKeys } = this.applyAndTrackMutations(
-        shadowDoc,
-        syncPayloadAfterMsgType,
-      );
+      const currentRoots = getDocRoots(currentDoc);
+      const prevElementCount = currentRoots.elements.size;
+      const lockedElementIds = new Set<string>();
+      currentRoots.elements.forEach((elMap, id) => {
+        if (elMap instanceof Y.Map && elMap.get('locked') === true) {
+          lockedElementIds.add(id);
+        }
+      });
+
+      let mutationTracking: {
+        metaModified: boolean;
+        commentsModified: boolean;
+        modifiedElementKeys: Set<string>;
+      };
+      try {
+        mutationTracking = this.applyAndTrackMutations(shadowDoc, syncPayloadAfterMsgType);
+      } catch {
+        return { valid: false, reason: SyncValidationFailureReason.INVALID_ELEMENT_SCHEMA };
+      }
+
+      const { metaModified, commentsModified, modifiedElementKeys } = mutationTracking;
 
       if (role !== Role.OWNER && metaModified) {
         return { valid: false, reason: SyncValidationFailureReason.META_FORBIDDEN };
       }
 
+      if (commentsModified) {
+        return { valid: false, reason: SyncValidationFailureReason.INVALID_ELEMENT_SCHEMA };
+      }
+
       const shadowRoots = getDocRoots(shadowDoc);
-      if (shadowRoots.elements.size > LIMITS.MAX_ELEMENTS) {
+      if (
+        shadowRoots.elements.size > LIMITS.MAX_ELEMENTS &&
+        shadowRoots.elements.size >= prevElementCount
+      ) {
         return { valid: false, reason: SyncValidationFailureReason.ELEMENT_QUOTA_EXCEEDED };
       }
 
-      if (!this.areModifiedElementsValid(shadowRoots.elements, modifiedElementKeys)) {
+      if (
+        !this.areModifiedElementsValid(
+          shadowRoots.elements,
+          modifiedElementKeys,
+          lockedElementIds,
+        )
+      ) {
         return { valid: false, reason: SyncValidationFailureReason.INVALID_ELEMENT_SCHEMA };
       }
 
@@ -95,13 +125,17 @@ export class YjsValidatorService {
   private applyAndTrackMutations(
     shadowDoc: Y.Doc,
     syncPayloadAfterMsgType: Uint8Array,
-  ): { metaModified: boolean; modifiedElementKeys: Set<string> } {
+  ): { metaModified: boolean; commentsModified: boolean; modifiedElementKeys: Set<string> } {
     const shadowRoots = getDocRoots(shadowDoc);
     let metaModified = false;
+    let commentsModified = false;
     const modifiedElementKeys = new Set<string>();
 
     const metaDeepObserver = () => {
       metaModified = true;
+    };
+    const commentsDeepObserver = () => {
+      commentsModified = true;
     };
     const elementsObserver: Parameters<typeof shadowRoots.elements.observe>[0] = (event) => {
       event.keys.forEach((_change, key) => modifiedElementKeys.add(key));
@@ -116,6 +150,7 @@ export class YjsValidatorService {
     };
 
     shadowRoots.meta.observeDeep(metaDeepObserver);
+    shadowRoots.comments.observeDeep(commentsDeepObserver);
     shadowRoots.elements.observe(elementsObserver);
     shadowRoots.elements.observeDeep(elementsDeepObserver);
 
@@ -125,22 +160,38 @@ export class YjsValidatorService {
       syncProtocol.readSyncMessage(decoder, dummyEncoder, shadowDoc, 'validator');
     } finally {
       shadowRoots.meta.unobserveDeep(metaDeepObserver);
+      shadowRoots.comments.unobserveDeep(commentsDeepObserver);
       shadowRoots.elements.unobserve(elementsObserver);
       shadowRoots.elements.unobserveDeep(elementsDeepObserver);
     }
 
-    return { metaModified, modifiedElementKeys };
+    return { metaModified, commentsModified, modifiedElementKeys };
   }
 
   private areModifiedElementsValid(
     elements: Y.Map<Y.Map<unknown>>,
     modifiedElementKeys: Set<string>,
+    lockedElementIds: Set<string>,
   ): boolean {
     for (const key of modifiedElementKeys) {
       const elementMap = elements.get(key);
+      const wasLocked = lockedElementIds.has(key);
+
       if (!elementMap) {
+        if (wasLocked) {
+          return false;
+        }
         continue;
       }
+
+      if (wasLocked && elementMap.get('locked') === true) {
+        return false;
+      }
+
+      if (elementMap.get('id') !== key) {
+        return false;
+      }
+
       if (!isValidElementMap(elementMap)) {
         return false;
       }

@@ -218,4 +218,74 @@ describe('Room & Yjs Synchronization + CRDT Validation', () => {
     expect(mockRedis.client.publish).not.toHaveBeenCalled();
     expect(mockPersistence.queueUpdate).not.toHaveBeenCalled();
   });
+
+  it('rejects mutations or deletions of locked elements and blocks unknown element fields', () => {
+    const { ws } = createMockWs();
+    room.attach(ws, { userId: 'e1', userName: 'Editor', role: 'EDITOR' });
+
+    room.doc.transact(() => {
+      const roots = getDocRoots(room.doc);
+      const lockedEl = new Y.Map<unknown>();
+      lockedEl.set('id', 'locked-1');
+      lockedEl.set('type', 'rect');
+      lockedEl.set('x', 0);
+      lockedEl.set('y', 0);
+      lockedEl.set('w', 100);
+      lockedEl.set('h', 100);
+      lockedEl.set('rotation', 0);
+      lockedEl.set('z', 'a0');
+      lockedEl.set('createdBy', 'u1');
+      lockedEl.set('locked', true);
+      const style = new Y.Map<unknown>();
+      style.set('fill', '#fff');
+      style.set('stroke', '#000');
+      style.set('strokeWidth', 2);
+      style.set('opacity', 1);
+      lockedEl.set('style', style);
+      roots.elements.set('locked-1', lockedEl);
+    }, 'init');
+
+    const clientDoc = new Y.Doc();
+    Y.applyUpdate(clientDoc, Y.encodeStateAsUpdate(room.doc));
+    const sv = Y.encodeStateVector(clientDoc);
+
+    clientDoc.transact(() => {
+      const el = getDocRoots(clientDoc).elements.get('locked-1')!;
+      el.set('x', 500);
+    });
+    const moveLockedUpdate = Y.encodeStateAsUpdate(clientDoc, sv);
+    const enc = encoding.createEncoder();
+    encoding.writeVarUint(enc, MSG.SYNC);
+    syncProtocol.writeUpdate(enc, moveLockedUpdate);
+    room.handleMessage(ws, encoding.toUint8Array(enc));
+
+    const authoritativeLocked = getDocRoots(room.doc).elements.get('locked-1')!;
+    expect(authoritativeLocked.get('x')).toBe(0);
+  });
+
+  it('enforces authenticated userId and role on awareness updates to prevent identity spoofing', () => {
+    const { ws } = createMockWs();
+    room.attach(ws, { userId: 'viewer-real-id', userName: 'Viewer', role: 'VIEWER' });
+
+    const clientDoc = new Y.Doc();
+    const clientAw = new awarenessProtocol.Awareness(clientDoc);
+    clientAw.setLocalStateField('user', {
+      id: 'spoofed-owner-id',
+      name: 'Fake Owner',
+      color: '#ef4444',
+      role: 'OWNER',
+    });
+    const update = awarenessProtocol.encodeAwarenessUpdate(clientAw, [clientDoc.clientID]);
+
+    const encoder = encoding.createEncoder();
+    encoding.writeVarUint(encoder, MSG.AWARENESS);
+    encoding.writeVarUint8Array(encoder, update);
+    room.handleMessage(ws, encoding.toUint8Array(encoder));
+
+    const storedState = room.awareness.getStates().get(clientDoc.clientID) as {
+      user?: { id: string; role: string };
+    };
+    expect(storedState?.user?.id).toBe('viewer-real-id');
+    expect(storedState?.user?.role).toBe('VIEWER');
+  });
 });
