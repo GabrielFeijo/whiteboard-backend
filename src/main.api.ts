@@ -13,11 +13,13 @@ async function bootstrap(): Promise<void> {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
   const config = app.get<ConfigService<Env, true>>(ConfigService);
 
+  app.set('trust proxy', 1);
   app.disable('x-powered-by');
   app.use(cookieParser());
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,
+      forbidNonWhitelisted: true,
       transform: true,
       transformOptions: { enableImplicitConversion: false },
     }),

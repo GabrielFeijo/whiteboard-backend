@@ -84,4 +84,8 @@ export class BoardsService {
 
     return this.boardsRepository.softDelete(boardId);
   }
+
+  async purgeExpiredBoards(retentionDays = 30): Promise<number> {
+    return this.boardsRepository.purgeExpiredSoftDeleted(retentionDays);
+  }
 }

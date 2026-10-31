@@ -99,6 +99,7 @@ model Snapshot {
   reason    String
   board     Board    @relation(fields: [boardId], references: [id], onDelete: Cascade)
 
+  @@unique([boardId, version])
   @@index([boardId, createdAt])
   @@map("snapshot")
 }

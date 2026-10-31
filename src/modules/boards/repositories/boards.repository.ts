@@ -151,4 +151,17 @@ export class BoardsRepository {
       data: { deletedAt: new Date() },
     });
   }
+
+  async purgeExpiredSoftDeleted(retentionDays = 30): Promise<number> {
+    const cutoff = new Date(Date.now() - retentionDays * 24 * 60 * 60 * 1000);
+    const result = await this.prisma.board.deleteMany({
+      where: {
+        deletedAt: {
+          not: null,
+          lt: cutoff,
+        },
+      },
+    });
+    return result.count;
+  }
 }
