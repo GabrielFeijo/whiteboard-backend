@@ -68,8 +68,8 @@ export class AssetsController {
 
   @Get(':assetKey/view')
   @UseGuards(OptionalJwtAuthGuard)
-  @ApiOperation({ summary: 'Redirect directly to presigned S3 GET URL for authorized viewing' })
-  @ApiResponse({ status: 302, description: 'Redirected to presigned S3 URL' })
+  @ApiOperation({ summary: 'Stream authorized S3 asset binary for canvas rendering' })
+  @ApiResponse({ status: 200, description: 'Asset binary stream returned' })
   async viewAsset(
     @Param('boardId', ParseCuidPipe) boardId: string,
     @Param('assetKey') assetKey: string,
@@ -77,12 +77,14 @@ export class AssetsController {
     @Res() res: Response,
     @Query('token') shareToken?: string,
   ): Promise<void> {
-    const { readUrl } = await this.assetsService.createPresignedDownloadUrl(
+    const { buffer, contentType } = await this.assetsService.downloadAssetObject(
       boardId,
       req.user?.id,
       assetKey,
       shareToken,
     );
-    res.redirect(302, readUrl);
+    res.setHeader('Content-Type', contentType);
+    res.setHeader('Cache-Control', 'private, max-age=3600');
+    res.status(200).send(buffer);
   }
 }

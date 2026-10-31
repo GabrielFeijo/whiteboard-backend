@@ -1,4 +1,9 @@
-import { BadRequestException, ForbiddenException, Injectable } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { nanoid } from 'nanoid';
 import { PresignedUploadResult, S3StorageService } from '../../core/storage/s3-storage.service';
 import { BoardAclService } from '../boards/services/board-acl.service';
@@ -10,6 +15,15 @@ export class AssetsService {
     private readonly s3Storage: S3StorageService,
     private readonly boardAclService: BoardAclService,
   ) {}
+
+  private resolveSafeStorageKey(boardId: string, rawKey: string): string {
+    const decoded = decodeURIComponent(rawKey).replace(/^\/+/, '');
+    const safeFilename = decoded.replace(`boards/${boardId}/`, '');
+    if (!/^[a-zA-Z0-9_.-]+$/.test(safeFilename) || safeFilename.includes('..')) {
+      throw new BadRequestException('Invalid asset key');
+    }
+    return `boards/${boardId}/${safeFilename}`;
+  }
 
   async createPresignedUploadUrl(
     boardId: string,
@@ -42,15 +56,26 @@ export class AssetsService {
   ): Promise<{ readUrl: string; expiresIn: number }> {
     await this.boardAclService.resolveBoardWithAccess(boardId, userId, shareToken);
 
-    const safeFilename = rawKey.replace(/^\/+/, '').replace(`boards/${boardId}/`, '');
-    if (!/^[a-zA-Z0-9_.-]+$/.test(safeFilename) || safeFilename.includes('..')) {
-      throw new BadRequestException('Invalid asset key');
-    }
-
-    const key = `boards/${boardId}/${safeFilename}`;
+    const key = this.resolveSafeStorageKey(boardId, rawKey);
     const expiresIn = 900;
     const readUrl = await this.s3Storage.createPresignedGetUrl(key, expiresIn);
 
     return { readUrl, expiresIn };
+  }
+
+  async downloadAssetObject(
+    boardId: string,
+    userId: string | undefined,
+    rawKey: string,
+    shareToken?: string,
+  ): Promise<{ buffer: Buffer; contentType: string }> {
+    await this.boardAclService.resolveBoardWithAccess(boardId, userId, shareToken);
+    const key = this.resolveSafeStorageKey(boardId, rawKey);
+
+    try {
+      return await this.s3Storage.getObject(key);
+    } catch {
+      throw new NotFoundException('Asset not found');
+    }
   }
 }

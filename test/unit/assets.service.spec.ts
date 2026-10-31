@@ -84,4 +84,22 @@ describe('AssetsService', () => {
       service.createPresignedDownloadUrl('board-1', 'user-viewer', '../secret-board/asset.png'),
     ).rejects.toThrow(BadRequestException);
   });
+
+  it('downloads asset object bytes and normalizes prefixed or URL-encoded storage keys', async () => {
+    const mockGetObject = vi
+      .spyOn(s3Storage, 'getObject')
+      .mockResolvedValue({ buffer: Buffer.from([0x89, 0x50, 0x4e, 0x47]), contentType: 'image/png' });
+    const service = new AssetsService(s3Storage, createMockBoardAcl('VIEWER'));
+
+    const res = await service.downloadAssetObject(
+      'board-1',
+      'user-viewer',
+      'boards%2Fboard-1%2Fdiagram.png',
+    );
+
+    expect(mockGetObject).toHaveBeenCalledWith('boards/board-1/diagram.png');
+    expect(res.contentType).toBe('image/png');
+    expect(res.buffer.length).toBe(4);
+    mockGetObject.mockRestore();
+  });
 });

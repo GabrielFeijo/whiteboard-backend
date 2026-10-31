@@ -82,6 +82,21 @@ export class S3StorageService {
     return this.rewritePublicEndpoint(readUrl);
   }
 
+  async getObject(key: string): Promise<{ buffer: Buffer; contentType: string }> {
+    const command = new GetObjectCommand({
+      Bucket: this.bucket,
+      Key: key,
+    });
+
+    const response = await this.s3Client.send(command);
+    const byteArray = await response.Body?.transformToByteArray();
+
+    return {
+      buffer: Buffer.from(byteArray ?? []),
+      contentType: response.ContentType || 'application/octet-stream',
+    };
+  }
+
   private rewritePublicEndpoint(signedUrl: string): string {
     return this.publicEndpoint !== this.endpoint
       ? signedUrl.replace(this.endpoint, this.publicEndpoint)
