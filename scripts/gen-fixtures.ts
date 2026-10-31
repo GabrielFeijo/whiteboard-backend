@@ -1,5 +1,6 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import process from 'node:process';
 import * as Y from 'yjs';
 import {
   LIMITS,
@@ -60,7 +61,7 @@ write('constants.json', {
 const a = doc(1001);
 addRect(a, 'r1', 10, 20, 'u1');
 write('doc-basic.json', {
-  description: 'Um update cria o retângulo r1.',
+  description: 'Single update creates rectangle r1.',
   updates: [b64(Y.encodeStateAsUpdate(a))],
   expected: snap(a),
 });
@@ -88,10 +89,10 @@ const updB = Y.encodeStateAsUpdate(B, svB);
 const merged = doc(9);
 [baseUpdate, updA, updB].forEach((u) => Y.applyUpdate(merged, u));
 write('doc-concurrent.json', {
-  description: 'A move r1 e B pinta r1 ao mesmo tempo; ambas as edições são preservadas.',
+  description: 'A moves r1 and B paints r1 concurrently; both edits are preserved.',
   base: b64(baseUpdate),
   updatesAnyOrder: [b64(updA), b64(updB)],
   expected: snap(merged),
 });
 
-console.log('Fixtures geradas em', out);
+process.stdout.write(`Fixtures generated in ${out}\n`);

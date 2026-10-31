@@ -20,7 +20,8 @@
     "noImplicitReturns": true,
     "noFallthroughCasesInSwitch": true,
     "forceConsistentCasingInFileNames": true,
-    "resolveJsonModule": true
+    "resolveJsonModule": true,
+    "types": ["node"]
   },
-  "include": ["src/**/*", "test/**/*", "prisma/**/*", "*.ts"]
+  "include": ["src/**/*", "test/**/*", "prisma/**/*", "scripts/**/*", "*.ts", "*.mts"]
 }

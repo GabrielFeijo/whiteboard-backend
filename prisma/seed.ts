@@ -2,6 +2,7 @@ import { PrismaClient, Role } from '@prisma/client';
 import * as argon2 from 'argon2';
 import { generateKeyBetween } from 'fractional-indexing';
 import * as crypto from 'node:crypto';
+import process from 'node:process';
 import * as Y from 'yjs';
 import { getDocRoots, SnapshotReason } from '../src/shared';
 
@@ -113,9 +114,12 @@ function createDemoBoardYDoc(createdBy: string): Uint8Array {
 }
 
 async function main(): Promise<void> {
-  console.log('🌱 Starting database seeding...');
+  if (process.env.NODE_ENV === 'production' && process.env.ALLOW_PRODUCTION_SEED !== 'true') {
+    throw new Error('Refusing to run demo seed in production environment.');
+  }
+  process.stdout.write('🌱 Starting database seeding...\n');
 
-  const defaultPassword = 'Password123!';
+  const defaultPassword = process.env.SEED_DEFAULT_PASSWORD || 'Password123!';
   const passwordHash = await argon2.hash(defaultPassword, { type: argon2.argon2id });
 
   const alice = await prisma.user.upsert({
@@ -148,11 +152,11 @@ async function main(): Promise<void> {
     },
   });
 
-  console.log('  ✅ Users seeded:');
-  console.log(`     - Alice (Owner): ${alice.email}`);
-  console.log(`     - Bob (Editor):   ${bob.email}`);
-  console.log(`     - Charlie (Viewer): ${charlie.email}`);
-  console.log(`     (Password for all: ${defaultPassword})`);
+  process.stdout.write('  ✅ Users seeded:\n');
+  process.stdout.write(`     - Alice (Owner): ${alice.email}\n`);
+  process.stdout.write(`     - Bob (Editor):   ${bob.email}\n`);
+  process.stdout.write(`     - Charlie (Viewer): ${charlie.email}\n`);
+  process.stdout.write(`     (Password for all: ${defaultPassword})\n`);
 
   let archBoard = await prisma.board.findFirst({
     where: { title: 'Distributed System Architecture', ownerId: alice.id, deletedAt: null },
@@ -249,18 +253,18 @@ async function main(): Promise<void> {
     create: { boardId: sprintBoard.id, userId: alice.id, role: Role.EDITOR },
   });
 
-  console.log('  ✅ Boards seeded:');
-  console.log(`     - [${archBoard.id}] "${archBoard.title}" (Owner: Alice)`);
-  console.log(`     - [${sprintBoard.id}] "${sprintBoard.title}" (Owner: Bob)`);
-  console.log('  ✅ Share links seeded:');
-  console.log(`     - Editor Token: ${editorShareToken}`);
-  console.log(`     - Viewer Token: ${viewerShareToken}`);
-  console.log('🎉 Database seeding completed successfully.');
+  process.stdout.write('  ✅ Boards seeded:\n');
+  process.stdout.write(`     - [${archBoard.id}] "${archBoard.title}" (Owner: Alice)\n`);
+  process.stdout.write(`     - [${sprintBoard.id}] "${sprintBoard.title}" (Owner: Bob)\n`);
+  process.stdout.write('  ✅ Share links seeded:\n');
+  process.stdout.write(`     - Editor Token: ${editorShareToken}\n`);
+  process.stdout.write(`     - Viewer Token: ${viewerShareToken}\n`);
+  process.stdout.write('🎉 Database seeding completed successfully.\n');
 }
 
 main()
   .catch((err) => {
-    console.error('❌ Database seeding failed:', err);
+    process.stderr.write(`❌ Database seeding failed: ${err instanceof Error ? err.message : String(err)}\n`);
     process.exit(1);
   })
   .finally(async () => {

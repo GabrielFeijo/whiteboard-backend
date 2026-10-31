@@ -2,7 +2,7 @@
   "name": "whiteboard-backend",
   "version": "0.1.0",
   "private": true,
-  "description": "Whiteboard colaborativo em tempo real — API REST + Collab Server (NestJS, Yjs)",
+  "description": "Real-time collaborative whiteboard — REST API + Collab Server (NestJS, Yjs)",
   "engines": {
     "node": ">=22"
   },
