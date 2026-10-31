@@ -89,20 +89,33 @@ export class BoardSnapshotsService {
     }
 
     const latestSnapshot = await this.snapshotsRepository.findLatestByVersion(boardId);
-    const newVersion = (latestSnapshot?.version ?? targetSnapshot.version) + 1;
+    const currentMergedState = await this.snapshotsRepository.loadMergedBoardState(boardId);
+    let nextVersion = (latestSnapshot?.version ?? targetSnapshot.version) + 1;
+
+    if (currentMergedState && latestSnapshot?.id !== targetSnapshot.id) {
+      await this.snapshotsRepository.create({
+        boardId,
+        data: currentMergedState,
+        version: nextVersion,
+        reason: SnapshotReason.PRE_RESTORE,
+      });
+      nextVersion += 1;
+    }
 
     const restoredRecord = await this.snapshotsRepository.create({
       boardId,
       data: targetSnapshot.data,
-      version: newVersion,
+      version: nextVersion,
       reason: `RESTORED_FROM_V${targetSnapshot.version}`,
     });
+
+    await this.snapshotsRepository.deleteUpdatesByBoard(boardId);
 
     await this.redis.client.publish(
       redisChannels.restore(boardId),
       JSON.stringify({
         snapshotId: targetSnapshot.id,
-        version: newVersion,
+        version: nextVersion,
         data: Buffer.from(targetSnapshot.data).toString('base64'),
       }),
     );

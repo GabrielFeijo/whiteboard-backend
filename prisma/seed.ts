@@ -1,5 +1,6 @@
 import { PrismaClient, Role } from '@prisma/client';
 import * as argon2 from 'argon2';
+import { generateKeyBetween } from 'fractional-indexing';
 import * as crypto from 'node:crypto';
 import * as Y from 'yjs';
 import { getDocRoots, SnapshotReason } from '../src/shared';
@@ -13,6 +14,7 @@ function hashToken(token: string): string {
 function createDemoBoardYDoc(createdBy: string): Uint8Array {
   const doc = new Y.Doc();
   const roots = getDocRoots(doc);
+  let currentZ: string | null = null;
 
   const addElement = (
     id: string,
@@ -26,6 +28,7 @@ function createDemoBoardYDoc(createdBy: string): Uint8Array {
   ) => {
     const el = new Y.Map<unknown>();
     const elStyle = new Y.Map<unknown>();
+    currentZ = generateKeyBetween(currentZ, null);
 
     elStyle.set('fill', style.fill);
     elStyle.set('stroke', style.stroke);
@@ -39,7 +42,7 @@ function createDemoBoardYDoc(createdBy: string): Uint8Array {
     el.set('w', w);
     el.set('h', h);
     el.set('rotation', 0);
-    el.set('z', `z_${id}`);
+    el.set('z', currentZ);
     el.set('style', elStyle);
     el.set('createdBy', createdBy);
     if (text) {

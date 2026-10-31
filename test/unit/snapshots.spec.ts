@@ -123,6 +123,95 @@ describe('BoardSnapshotsService - Snapshots & Restore', () => {
     expect(publishSpy).toHaveBeenCalledWith('board:b1:restore', expect.stringContaining('s1'));
   });
 
+  it('creates a PRE_RESTORE snapshot and cleans up doc_updates when restoring an earlier version', async () => {
+    const publishSpy = vi.fn().mockResolvedValue(1);
+    const deleteManySpy = vi.fn().mockResolvedValue({ count: 2 });
+    const createSpy = vi
+      .fn()
+      .mockResolvedValueOnce({
+        id: 's3-pre',
+        boardId: 'b1',
+        version: 3,
+        reason: 'PRE_RESTORE',
+        createdAt: new Date(),
+      })
+      .mockResolvedValueOnce({
+        id: 's4-restored',
+        boardId: 'b1',
+        version: 4,
+        reason: 'RESTORED_FROM_V1',
+        createdAt: new Date(),
+      });
+
+    const mockRedis = {
+      client: { publish: publishSpy },
+    } as unknown as RedisService;
+
+    const mockPrisma = {
+      board: {
+        findFirst: vi.fn().mockResolvedValue({
+          id: 'b1',
+          ownerId: 'u1',
+          members: [{ role: 'OWNER', userId: 'u1' }],
+        }),
+      },
+      snapshot: {
+        findFirst: vi
+          .fn()
+          .mockResolvedValueOnce({
+            id: 's1',
+            boardId: 'b1',
+            version: 1,
+            data: Buffer.from([10, 20]),
+          })
+          .mockResolvedValueOnce({
+            id: 's2',
+            boardId: 'b1',
+            version: 2,
+          })
+          .mockResolvedValueOnce({
+            id: 's2',
+            boardId: 'b1',
+            version: 2,
+            createdAt: new Date(),
+            data: Buffer.from([30, 40]),
+          }),
+        create: createSpy,
+      },
+      docUpdate: {
+        findMany: vi.fn().mockResolvedValue([]),
+        deleteMany: deleteManySpy,
+      },
+    } as unknown as PrismaService;
+
+    const service = createSnapshotServiceWithMocks(mockPrisma, mockRedis);
+    const res = await service.restoreSnapshot('b1', 's1', 'u1');
+
+    expect(res.success).toBe(true);
+    expect(res.version).toBe(4);
+    expect(createSpy).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        data: expect.objectContaining({
+          boardId: 'b1',
+          version: 3,
+          reason: 'PRE_RESTORE',
+        }),
+      }),
+    );
+    expect(createSpy).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        data: expect.objectContaining({
+          boardId: 'b1',
+          version: 4,
+          reason: 'RESTORED_FROM_V1',
+        }),
+      }),
+    );
+    expect(deleteManySpy).toHaveBeenCalledWith({ where: { boardId: 'b1' } });
+  });
+
   it('throws NotFoundException if target snapshot does not exist', async () => {
     const mockPrisma = {
       board: {

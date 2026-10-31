@@ -100,4 +100,10 @@ export class SnapshotsRepository {
     }
     return Y.mergeUpdates(chunks);
   }
+
+  async deleteUpdatesByBoard(boardId: string): Promise<void> {
+    await this.prisma.docUpdate?.deleteMany?.({
+      where: { boardId },
+    });
+  }
 }
