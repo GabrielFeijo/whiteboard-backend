@@ -2,6 +2,7 @@ import {
   ConflictException,
   Injectable,
   NotFoundException,
+  Optional,
   UnauthorizedException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
@@ -10,6 +11,8 @@ import * as argon2 from 'argon2';
 import * as crypto from 'node:crypto';
 import { nanoid } from 'nanoid';
 import { Env } from '../../core/config/env';
+import { redisKeys } from '../../core/redis/redis-keys';
+import { RedisService } from '../../core/redis/redis.service';
 import { UsersRepository, UserProfileRecord } from '../users/users.repository';
 import { RefreshTokenRepository } from './repositories/refresh-token.repository';
 import { BruteForceService } from './services/brute-force.service';
@@ -39,6 +42,7 @@ export class AuthService {
     private readonly bruteForceService: BruteForceService,
     private readonly jwtService: JwtService,
     private readonly config: ConfigService<Env, true>,
+    @Optional() private readonly redis?: RedisService,
   ) {}
 
   private hashToken(token: string): string {
@@ -179,6 +183,10 @@ export class AuthService {
 
   async deleteMe(userId: string): Promise<{ success: boolean; message: string }> {
     await this.usersRepository.anonymizeAndSoftDelete(userId);
+    if (this.redis) {
+      const ttl = this.config.get('JWT_ACCESS_TTL', { infer: true }) ?? 900;
+      await this.redis.client.set(redisKeys.authUserRevoked(userId), '1', 'EX', ttl);
+    }
     return { success: true, message: 'Account anonymized and deactivated' };
   }
 }

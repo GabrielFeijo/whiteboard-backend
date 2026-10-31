@@ -2,6 +2,8 @@ import { UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import { Env } from '../../core/config/env';
+import { redisKeys } from '../../core/redis/redis-keys';
+import { RedisService } from '../../core/redis/redis.service';
 import {
   AuthenticatedRequest,
   AuthenticatedUser,
@@ -21,6 +23,7 @@ export async function verifyBearerToken(
   token: string,
   jwtService: JwtService,
   config: ConfigService<Env, true>,
+  redis?: RedisService,
 ): Promise<AuthenticatedUser> {
   try {
     const rawPayload: unknown = await jwtService.verifyAsync(token, {
@@ -29,6 +32,12 @@ export async function verifyBearerToken(
     const parsed = AuthenticatedUserSchema.safeParse(rawPayload);
     if (!parsed.success) {
       throw new UnauthorizedException('Malformed token payload');
+    }
+    if (redis) {
+      const revoked = await redis.client.get(redisKeys.authUserRevoked(parsed.data.id));
+      if (revoked) {
+        throw new UnauthorizedException('User account or session has been revoked');
+      }
     }
     return parsed.data;
   } catch (err) {
