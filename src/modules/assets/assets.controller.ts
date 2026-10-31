@@ -77,14 +77,23 @@ export class AssetsController {
     @Res() res: Response,
     @Query('token') shareToken?: string,
   ): Promise<void> {
-    const { buffer, contentType } = await this.assetsService.downloadAssetObject(
-      boardId,
-      req.user?.id,
-      assetKey,
-      shareToken,
-    );
+    const { buffer, stream, contentType, contentLength } =
+      await this.assetsService.downloadAssetObject(boardId, req.user?.id, assetKey, shareToken);
     res.setHeader('Content-Type', contentType);
+    res.setHeader('Content-Security-Policy', "default-src 'none'; sandbox");
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('Cross-Origin-Resource-Policy', 'same-origin');
     res.setHeader('Cache-Control', 'private, max-age=3600');
+    if (contentLength !== undefined) {
+      res.setHeader('Content-Length', String(contentLength));
+    }
+
+    if (stream) {
+      res.status(200);
+      stream.pipe(res);
+      return;
+    }
+
     res.status(200).send(buffer);
   }
 }

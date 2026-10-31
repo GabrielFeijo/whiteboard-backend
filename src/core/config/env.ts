@@ -27,7 +27,7 @@ export const EnvSchema = z.object({
   DATABASE_URL: z.url(),
   REDIS_URL: z.url(),
 
-  JWT_ACCESS_SECRET: z.string().min(32, 'JWT_ACCESS_SECRET deve ter ao menos 32 caracteres'),
+  JWT_ACCESS_SECRET: z.string().min(32, 'JWT_ACCESS_SECRET must be at least 32 characters long'),
   JWT_ACCESS_TTL: z.coerce.number().int().positive().default(900),
   REFRESH_COOKIE_NAME: z.string().default('wb_refresh'),
   REFRESH_TOKEN_TTL_DAYS: z.coerce.number().int().positive().default(7),
@@ -50,7 +50,7 @@ export function validateEnv(raw: Record<string, unknown>): Env {
   const parsed = EnvSchema.safeParse(raw);
   if (!parsed.success) {
     const issues = parsed.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; ');
-    throw new Error(`Configuração de ambiente inválida — ${issues}`);
+    throw new Error(`Invalid environment configuration — ${issues}`);
   }
   return parsed.data;
 }

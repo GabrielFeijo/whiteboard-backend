@@ -102,4 +102,21 @@ describe('AssetsService', () => {
     expect(res.buffer.length).toBe(4);
     mockGetObject.mockRestore();
   });
+
+  it('rejects stored assets with disallowed MIME types (e.g. text/html or image/svg+xml) and malformed URI keys', async () => {
+    const mockGetObject = vi
+      .spyOn(s3Storage, 'getObject')
+      .mockResolvedValue({ buffer: Buffer.from('<script>alert(1)</script>'), contentType: 'text/html' });
+    const service = new AssetsService(s3Storage, createMockBoardAcl('VIEWER'));
+
+    await expect(
+      service.downloadAssetObject('board-1', 'user-viewer', 'boards/board-1/diagram.png'),
+    ).rejects.toThrow(ForbiddenException);
+
+    await expect(
+      service.downloadAssetObject('board-1', 'user-viewer', '%E0%A4%A'),
+    ).rejects.toThrow(BadRequestException);
+
+    mockGetObject.mockRestore();
+  });
 });

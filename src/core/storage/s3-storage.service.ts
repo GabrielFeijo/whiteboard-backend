@@ -1,3 +1,4 @@
+import { Readable } from 'node:stream';
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { GetObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
@@ -22,6 +23,7 @@ export interface PresignedUploadResult {
 @Injectable()
 export class S3StorageService {
   private readonly s3Client: S3Client;
+  private readonly publicS3Client: S3Client;
   private readonly bucket: string;
   private readonly endpoint: string;
   private readonly publicEndpoint: string;
@@ -32,15 +34,28 @@ export class S3StorageService {
       this.config.get('S3_PUBLIC_ENDPOINT', { infer: true }) ?? this.endpoint;
     this.bucket = this.config.get('S3_BUCKET', { infer: true });
 
+    const region = this.config.get('S3_REGION', { infer: true });
+    const credentials = {
+      accessKeyId: this.config.get('S3_ACCESS_KEY', { infer: true }),
+      secretAccessKey: this.config.get('S3_SECRET_KEY', { infer: true }),
+    };
+
     this.s3Client = new S3Client({
       endpoint: this.endpoint,
-      region: this.config.get('S3_REGION', { infer: true }),
-      credentials: {
-        accessKeyId: this.config.get('S3_ACCESS_KEY', { infer: true }),
-        secretAccessKey: this.config.get('S3_SECRET_KEY', { infer: true }),
-      },
+      region,
+      credentials,
       forcePathStyle: true,
     });
+
+    this.publicS3Client =
+      this.publicEndpoint !== this.endpoint
+        ? new S3Client({
+            endpoint: this.publicEndpoint,
+            region,
+            credentials,
+            forcePathStyle: true,
+          })
+        : this.s3Client;
   }
 
   async createPresignedPutUrl(params: PresignedUploadParams): Promise<PresignedUploadResult> {
@@ -52,16 +67,15 @@ export class S3StorageService {
       ContentLength: params.contentLength,
     });
 
-    const uploadUrl = await getSignedUrl(this.s3Client, command, {
+    const uploadUrl = await getSignedUrl(this.publicS3Client, command, {
       expiresIn,
     });
 
-    const finalUploadUrl = this.rewritePublicEndpoint(uploadUrl);
     const assetUrl = `${this.publicEndpoint.replace(/\/$/, '')}/${this.bucket}/${params.key}`;
     const readUrl = await this.createPresignedGetUrl(params.key, expiresIn);
 
     return {
-      uploadUrl: finalUploadUrl,
+      uploadUrl,
       assetUrl,
       readUrl,
       key: params.key,
@@ -75,31 +89,36 @@ export class S3StorageService {
       Key: key,
     });
 
-    const readUrl = await getSignedUrl(this.s3Client, command, {
+    return getSignedUrl(this.publicS3Client, command, {
       expiresIn: expiresInSeconds,
     });
-
-    return this.rewritePublicEndpoint(readUrl);
   }
 
-  async getObject(key: string): Promise<{ buffer: Buffer; contentType: string }> {
+  async getObject(
+    key: string,
+  ): Promise<{ buffer: Buffer; stream?: Readable; contentType: string; contentLength?: number }> {
     const command = new GetObjectCommand({
       Bucket: this.bucket,
       Key: key,
     });
 
     const response = await this.s3Client.send(command);
-    const byteArray = await response.Body?.transformToByteArray();
+    const body = response.Body;
+    if (body instanceof Readable) {
+      return {
+        buffer: Buffer.alloc(0),
+        stream: body,
+        contentType: response.ContentType || 'application/octet-stream',
+        contentLength: response.ContentLength,
+      };
+    }
+
+    const byteArray = await body?.transformToByteArray();
 
     return {
       buffer: Buffer.from(byteArray ?? []),
       contentType: response.ContentType || 'application/octet-stream',
+      contentLength: response.ContentLength,
     };
-  }
-
-  private rewritePublicEndpoint(signedUrl: string): string {
-    return this.publicEndpoint !== this.endpoint
-      ? signedUrl.replace(this.endpoint, this.publicEndpoint)
-      : signedUrl;
   }
 }
