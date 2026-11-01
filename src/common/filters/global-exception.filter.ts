@@ -151,7 +151,7 @@ const PRISMA_ERROR_MAPPINGS: Record<string, { status: number; message: string; e
   },
   [PrismaErrorCode.UNIQUE_CONSTRAINT_FAILED]: {
     status: HttpStatus.CONFLICT,
-    message: 'Resource already exists with conflicting unique constraint',
+    message: 'This resource already exists',
     error: 'Conflict',
   },
   [PrismaErrorCode.FOREIGN_KEY_FAILED]: {
