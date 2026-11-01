@@ -35,22 +35,38 @@ export function encodeAwarenessMessage(
   return encoding.toUint8Array(encoder);
 }
 
+function cloneYMap(value: Y.Map<unknown>): Y.Map<unknown> {
+  const clonedMap = new Y.Map<unknown>();
+  value.forEach((entryValue: unknown, key: string) => {
+    clonedMap.set(key, cloneYValue(entryValue));
+  });
+  return clonedMap;
+}
+
+function cloneYArray(value: Y.Array<unknown>): Y.Array<unknown> {
+  const clonedArray = new Y.Array<unknown>();
+  const items = value.toArray().map((item: unknown) => cloneYValue(item));
+  if (items.length > 0) {
+    clonedArray.push(items);
+  }
+  return clonedArray;
+}
+
+function clonePlainObject(value: object): Record<string, unknown> {
+  const clonedObj: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(value)) {
+    clonedObj[k] = cloneYValue(v);
+  }
+  return clonedObj;
+}
+
 export function cloneYValue(value: unknown): unknown {
   if (value instanceof Y.Map) {
-    const clonedMap = new Y.Map<unknown>();
-    value.forEach((entryValue: unknown, key: string) => {
-      clonedMap.set(key, cloneYValue(entryValue));
-    });
-    return clonedMap;
+    return cloneYMap(value);
   }
 
   if (value instanceof Y.Array) {
-    const clonedArray = new Y.Array<unknown>();
-    const items = value.toArray().map((item: unknown) => cloneYValue(item));
-    if (items.length > 0) {
-      clonedArray.push(items);
-    }
-    return clonedArray;
+    return cloneYArray(value);
   }
 
   if (Array.isArray(value)) {
@@ -58,11 +74,7 @@ export function cloneYValue(value: unknown): unknown {
   }
 
   if (value !== null && typeof value === 'object') {
-    const clonedObj: Record<string, unknown> = {};
-    for (const [k, v] of Object.entries(value)) {
-      clonedObj[k] = cloneYValue(v);
-    }
-    return clonedObj;
+    return clonePlainObject(value);
   }
 
   return value;

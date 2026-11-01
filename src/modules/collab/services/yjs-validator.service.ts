@@ -177,10 +177,10 @@ export class YjsValidatorService {
       const elementMap = elements.get(key);
       const wasLocked = lockedElementIds.has(key);
 
+      if (!elementMap && wasLocked) {
+        return false;
+      }
       if (!elementMap) {
-        if (wasLocked) {
-          return false;
-        }
         continue;
       }
 

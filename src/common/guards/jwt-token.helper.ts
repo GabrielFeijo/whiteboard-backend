@@ -33,11 +33,12 @@ export async function verifyBearerToken(
     if (!parsed.success) {
       throw new UnauthorizedException('Malformed token payload');
     }
-    if (redis) {
-      const revoked = await redis.client.get(redisKeys.authUserRevoked(parsed.data.id));
-      if (revoked) {
-        throw new UnauthorizedException('User account or session has been revoked');
-      }
+    if (!redis) {
+      return parsed.data;
+    }
+    const revoked = await redis.client.get(redisKeys.authUserRevoked(parsed.data.id));
+    if (revoked) {
+      throw new UnauthorizedException('User account or session has been revoked');
     }
     return parsed.data;
   } catch (err) {

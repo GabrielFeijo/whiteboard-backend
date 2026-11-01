@@ -206,18 +206,20 @@ export class RoomManagerService implements OnModuleInit, OnModuleDestroy {
   private async unloadRoomIfEmpty(boardId: string): Promise<void> {
     this.unloadTimers.delete(boardId);
     const activeRoom = this.rooms.get(boardId);
-    if (activeRoom && activeRoom.clients.size === 0) {
-      try {
-        await activeRoom.createSnapshot();
-      } catch (err) {
-        this.logger.error(`Snapshot before unload failed for room ${boardId}`, err);
-      }
-      activeRoom.destroy();
-      this.rooms.delete(boardId);
-      this.metrics.setActiveRooms(this.rooms.size);
-      if (this.subscriberClient) {
-        await this.subscriberClient.unsubscribe(...this.getBoardChannels(boardId));
-      }
+    if (!activeRoom || activeRoom.clients.size > 0) {
+      return;
+    }
+
+    try {
+      await activeRoom.createSnapshot();
+    } catch (err) {
+      this.logger.error(`Snapshot before unload failed for room ${boardId}`, err);
+    }
+    activeRoom.destroy();
+    this.rooms.delete(boardId);
+    this.metrics.setActiveRooms(this.rooms.size);
+    if (this.subscriberClient) {
+      await this.subscriberClient.unsubscribe(...this.getBoardChannels(boardId));
     }
   }
 }
