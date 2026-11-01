@@ -1,7 +1,7 @@
 import { ExecutionContext } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Request, Response } from 'express';
-import { of } from 'rxjs';
+import { firstValueFrom, of } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
 import { LoggingInterceptor } from '../../src/common/interceptors/logging.interceptor';
 import { RequestContextMiddleware } from '../../src/common/middlewares/request-context.middleware';
@@ -123,11 +123,7 @@ describe('Security Middlewares & Interceptors', () => {
         handle: () => of({ ok: true }),
       };
 
-      await new Promise<void>((resolve) => {
-        interceptor.intercept(context, callHandler).subscribe({
-          complete: () => resolve(),
-        });
-      });
+      await firstValueFrom(interceptor.intercept(context, callHandler));
 
       expect(logSpy).toHaveBeenCalledWith(
         expect.stringMatching(/GET \/v1\/boards\/b1 200 - \d+ms \[reqId=test-req-id-999\]/),
